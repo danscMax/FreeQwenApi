@@ -3,7 +3,6 @@
 > **Локальный OpenAI-compatible прокси к Qwen Chat** ГРАЦ ЕМУ - [t.me/forgetmeai](https://t.me/forgetmeai).  
 > Текст, модели Qwen 3.7, файлы, Open WebUI, Hermes/LiteLLM, а теперь ещё генерация изображений и видео через Qwen Chat.
 
-![ForgetMeAI](https://img.shields.io/badge/ForgetMeAI-t.me%2Fforgetmeai-blue)
 ![API](https://img.shields.io/badge/API-OpenAI--compatible-green)
 ![Qwen](https://img.shields.io/badge/Qwen-Chat-purple)
 
@@ -364,8 +363,3 @@ curl http://localhost:3264/api/videos/status
 - URL сгенерированных медиа могут быть временными.
 - Для production используйте осторожно: это инструмент для экспериментов, демо и локальных workflow.
 
-## От ForgetMeAI
-
-Если fork помог — подпишитесь: [t.me/forgetmeai](https://t.me/forgetmeai)
-
-Там практичные AI-инструменты, локальные агенты, open-source находки и честные тесты без корпоративной лапши.
