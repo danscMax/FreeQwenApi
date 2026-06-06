@@ -88,3 +88,57 @@ export function markValid(id, newToken) {
 export function listTokens() {
     return loadTokens();
 }
+
+// Декодирует payload JWT без проверки подписи — для отображения срока и id аккаунта.
+export function decodeTokenInfo(token) {
+    try {
+        const payload = JSON.parse(Buffer.from(String(token).split('.')[1], 'base64url').toString());
+        return { exp: payload.exp ? payload.exp * 1000 : null, accountId: payload.id || null };
+    } catch {
+        return { exp: null, accountId: null };
+    }
+}
+
+// Добавляет токен вручную (из дашборда), без запуска браузера.
+// Возвращает { id } при успехе либо { error }.
+export function addTokenFromString(rawToken) {
+    const token = String(rawToken || '').trim();
+    if (!token.startsWith('eyJ') || token.split('.').length !== 3) {
+        return { error: 'Невалидный токен: ожидается JWT (eyJ...)' };
+    }
+    const tokens = loadTokens();
+    if (tokens.some(t => t.token === token)) {
+        return { error: 'Этот токен уже добавлен' };
+    }
+    let n = 2;
+    const ids = new Set(tokens.map(t => t.id));
+    while (ids.has('acc_' + n)) n++;
+    const id = 'acc_' + n;
+
+    const accDir = path.join(ACCOUNTS_PATH, id);
+    fs.mkdirSync(accDir, { recursive: true });
+    fs.writeFileSync(path.join(accDir, 'token.txt'), token, 'utf8');
+
+    tokens.push({ id, token, resetAt: null });
+    saveTokens(tokens);
+    return { id };
+}
+
+// Полностью удаляет аккаунт: запись в tokens.json и папку с token.txt.
+export function deleteAccount(id) {
+    // Защита от path traversal: id попадает в путь файловой системы.
+    if (typeof id !== 'string' || !/^acc_[a-zA-Z0-9]+$/.test(id)) {
+        return { error: 'Некорректный id аккаунта' };
+    }
+    const dir = path.join(ACCOUNTS_PATH, id);
+    if (!path.resolve(dir).startsWith(path.resolve(ACCOUNTS_PATH) + path.sep)) {
+        return { error: 'Недопустимый путь аккаунта' };
+    }
+    removeToken(id);
+    try {
+        if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
+    } catch (e) {
+        logError('TokenManager: не удалось удалить папку аккаунта ' + id, e);
+    }
+    return { ok: true };
+}

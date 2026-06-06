@@ -1,5 +1,7 @@
 import express from 'express';
 import bodyParser from 'body-parser';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 import { initBrowser, shutdownBrowser } from './src/browser/browser.js';
 import apiRoutes from './src/api/routes.js';
@@ -12,6 +14,7 @@ import { FORGETMEAI_WATERMARK } from './src/utils/branding.js';
 import { PORT, HOST } from './src/config.js';
 
 const app = express();
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const port = Number.parseInt(process.env.PORT ?? PORT, 10);
 const host = process.env.HOST || HOST;
@@ -66,6 +69,10 @@ app.use((req, res, next) => {
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
     if (req.method === 'OPTIONS') return res.sendStatus(200);
     next();
+});
+
+app.get(['/', '/dashboard'], (req, res) => {
+    res.sendFile(path.join(__dirname, 'src', 'dashboard', 'index.html'));
 });
 
 app.use('/api', apiRoutes);
