@@ -78,12 +78,12 @@ console.log(response.data[0].url);
 
 ### Через Open WebUI:
 1. Откройте настройки Open WebUI
-2. Перейдите в раздел "Images"
+2. Перейдите в раздел «Изображения» (Images)
 3. Включите генерацию изображений
 4. Укажите:
-   - Base URL: `http://localhost:3264/api`
-   - API Key: любой (если авторизация отключена)
-   - Model: `qwen-image-plus`
+   - Базовый URL (Base URL): `http://localhost:3264/api`
+   - API-ключ (API Key): любой (если авторизация отключена)
+   - Модель (Model): `qwen-image-plus`
 
 ## Проверка статуса API
 

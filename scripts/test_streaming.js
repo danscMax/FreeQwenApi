@@ -132,7 +132,7 @@ async function testStreaming() {
         console.log('\n=== Streaming Test Successful ===');
 
     } catch (error) {
-        console.error('Error:', error.message);
+        console.error('Ошибка:', error.message);
         if (error.response) {
             console.error('Status:', error.response.status);
             console.error('Data:', error.response.data);

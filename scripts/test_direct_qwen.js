@@ -25,8 +25,8 @@ function log(msg) {
 
 async function runTest() {
     try {
-        log('=== Starting Direct Qwen API Test ===');
-        log('Step 1: Initialize browser and get auth token...');
+        log('=== Запуск прямого теста Qwen API ===');
+        log('Шаг 1: инициализируем браузер и получаем auth-токен...');
         
         // Initialize browser
         await initBrowser();
@@ -53,7 +53,7 @@ async function runTest() {
             stream: true
         };
         
-        log('Step 2: POST directly to Qwen v2 API...');
+        log('Шаг 2: отправляем POST напрямую в Qwen v2 API...');
         log(`URL: https://chat.qwen.ai/api/v2/chat/completions`);
         log(`Headers: Authorization: Bearer ${token.substring(0, 30)}...`);
         log(`Payload: ${JSON.stringify(payload)}`);
@@ -73,7 +73,7 @@ async function runTest() {
             }
         );
         
-        log(`Step 3: Response received in ${Date.now() - startTime}ms`);
+        log(`Шаг 3: ответ получен за ${Date.now() - startTime}мс`);
         log(`Status: ${response.status}`);
         log(`Headers: ${JSON.stringify(response.headers, null, 2)}`);
         
@@ -120,7 +120,7 @@ async function runTest() {
             });
         });
         
-        log(`Step 4: Stream parsing complete`);
+        log(`Шаг 4: разбор stream завершён`);
         log(`Total chunks received: ${chunkCount}`);
         log(`Full content: "${fullContent}"`);
         log(`Raw chunks: ${JSON.stringify(rawChunks)}`);

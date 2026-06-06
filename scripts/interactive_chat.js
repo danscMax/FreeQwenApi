@@ -79,7 +79,7 @@ async function streamChat(userMessage) {
         return fullContent;
 
     } catch (error) {
-        console.error('\n❌ Error:', error.message);
+        console.error('\n❌ Ошибка:', error.message);
         if (error.response?.status === 404) {
             console.error('Server not running at', API_URL);
         }

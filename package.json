@@ -6,7 +6,7 @@
     "type": "module",
     "scripts": {
         "start": "node index.js",
-        "test": "echo \"Error: no test specified\" && exit 1",
+        "test": "echo \"Ошибка: тест не задан\" && exit 1",
         "example:stream": "node examples/openai-sdk/streaming.js",
         "example:simple": "node examples/openai-sdk/simple.js",
         "example:system": "node examples/openai-sdk/system-message.js",
@@ -17,7 +17,9 @@
         "example:axios": "node examples/direct-api/axios-example.js",
         "example:file-upload": "node examples/file-upload/upload-example.js",
         "example:streaming-test": "node examples/streaming-test.js",
-        "auth": "node scripts/auth.js"
+        "auth": "node scripts/auth.js",
+        "models:sync": "node scripts/sync_models.js",
+        "smoke": "node scripts/smoke_test.js"
     },
     "dependencies": {
         "ali-oss": "^6.23.0",

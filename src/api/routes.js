@@ -1,5 +1,5 @@
 import express from 'express';
-import { sendMessage, getAllModels, getApiKeys, createChatV2, pollTaskStatus, pagePool, extractAuthToken } from './chat.js';
+import { sendMessage, getAllModels, getApiKeys, createChatV2, pollQwenTaskStatus, extractMediaUrl, pagePool, extractAuthToken } from './chat.js';
 import { getAuthenticationStatus, getBrowserContext } from '../browser/browser.js';
 import { checkAuthentication } from '../browser/auth.js';
 import { logInfo, logError, logDebug } from '../logger/index.js';
@@ -13,6 +13,7 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import { listTokens, markInvalid, markRateLimited, markValid } from './tokenManager.js';
+import { FORGETMEAI_WATERMARK } from '../utils/branding.js';
 
 // Функция для генерирования детерминированного chatId на основе истории
 function generateChatIdFromHistory(messages) {
@@ -351,6 +352,301 @@ function buildCombinedTools(tools, functions, toolChoice) {
     return { combinedTools, toolChoice };
 }
 
+function stringifyOpenAIContent(content) {
+    if (content === null || content === undefined) return '';
+    if (typeof content === 'string') return content;
+    if (Array.isArray(content)) {
+        return content.map(item => {
+            if (!item) return '';
+            if (typeof item === 'string') return item;
+            if (item.type === 'text') return item.text || '';
+            if (item.type === 'image_url') return `[image: ${item.image_url?.url || ''}]`;
+            if (item.type === 'image') return `[image: ${item.image || ''}]`;
+            if (item.type === 'file') return `[file: ${item.file || item.name || ''}]`;
+            return JSON.stringify(item);
+        }).filter(Boolean).join('\n');
+    }
+    return JSON.stringify(content);
+}
+
+function buildStatelessTranscript(messages) {
+    const parts = [];
+    for (const msg of messages || []) {
+        if (!msg || msg.role === 'system') continue;
+        if (msg.role === 'user') {
+            parts.push(`User: ${stringifyOpenAIContent(msg.content)}`);
+        } else if (msg.role === 'assistant') {
+            const text = stringifyOpenAIContent(msg.content);
+            if (text) parts.push(`Assistant: ${text}`);
+            if (Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
+                parts.push(`Assistant tool calls: ${JSON.stringify(msg.tool_calls)}`);
+            }
+        } else if (msg.role === 'tool') {
+            const name = msg.name || msg.tool_call_id || 'tool';
+            parts.push(`Tool result (${name}): ${stringifyOpenAIContent(msg.content)}`);
+        } else {
+            parts.push(`${msg.role || 'message'}: ${stringifyOpenAIContent(msg.content)}`);
+        }
+    }
+    return parts.join('\n\n');
+}
+
+
+function hasOpenAIToolState(messages) {
+    return (messages || []).some(msg =>
+        msg?.role === 'tool' ||
+        msg?.role === 'function' ||
+        (msg?.role === 'assistant' && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) ||
+        (msg?.role === 'assistant' && msg.function_call)
+    );
+}
+
+function shouldFoldOpenAITranscript(messages, combinedTools, effectiveChatId) {
+    const nonSystemMessages = (messages || []).filter(msg => msg && msg.role !== 'system');
+    if (nonSystemMessages.length === 0) return false;
+
+    // Hermes/OpenAI agents send the full state every request. After a tool call the
+    // next request often ends with role=tool, not role=user. Qwen Chat has no native
+    // OpenAI tool-result role, so preserving context means folding the whole OpenAI
+    // transcript into a single user message for that turn.
+    if (hasOpenAIToolState(messages)) return true;
+
+    // If FreeQwenApi is used as a stateless OpenAI-compatible endpoint and no
+    // conversation id/chat id was provided, keep the complete client-side history.
+    if (!effectiveChatId && nonSystemMessages.length > 1) return true;
+
+    // When tools are available, prefer the OpenAI transcript over Qwen's opaque web
+    // chat memory on multi-message turns. This keeps Hermes skill/tool discipline in
+    // the prompt visible to Qwen instead of depending on previous web-chat state.
+    if (Array.isArray(combinedTools) && combinedTools.length > 0 && nonSystemMessages.length > 1) return true;
+
+    return false;
+}
+
+function prepareOpenAIMessageInput(messages, combinedTools, effectiveChatId) {
+    const lastUserMessage = (messages || []).filter(msg => msg && msg.role === 'user').pop();
+    if (shouldFoldOpenAITranscript(messages, combinedTools, effectiveChatId)) {
+        return {
+            messageContent: buildStatelessTranscript(messages),
+            files: lastUserMessage?.files || [],
+            folded: true,
+            missingUser: false
+        };
+    }
+
+    if (!lastUserMessage) {
+        return { messageContent: null, files: [], folded: false, missingUser: true };
+    }
+
+    return {
+        messageContent: lastUserMessage.content,
+        files: lastUserMessage.files || [],
+        folded: false,
+        missingUser: false
+    };
+}
+
+function truncateForPrompt(value, maxLen = 240) {
+    const text = String(value || '');
+    return text.length > maxLen ? text.slice(0, maxLen).trimEnd() + '…' : text;
+}
+
+function compactJsonSchema(schema, depth = 0) {
+    if (!schema || typeof schema !== 'object' || depth > 2) return schema;
+    if (Array.isArray(schema)) return schema.slice(0, 20).map(item => compactJsonSchema(item, depth + 1));
+
+    const out = {};
+    for (const key of ['type', 'enum', 'required', 'default']) {
+        if (schema[key] !== undefined) out[key] = schema[key];
+    }
+    if (schema.description) out.description = truncateForPrompt(schema.description, depth === 0 ? 180 : 90);
+    if (schema.properties && typeof schema.properties === 'object') {
+        out.properties = {};
+        for (const [name, prop] of Object.entries(schema.properties)) {
+            out.properties[name] = compactJsonSchema(prop, depth + 1);
+        }
+    }
+    if (schema.items) out.items = compactJsonSchema(schema.items, depth + 1);
+    if (schema.oneOf) out.oneOf = compactJsonSchema(schema.oneOf, depth + 1);
+    if (schema.anyOf) out.anyOf = compactJsonSchema(schema.anyOf, depth + 1);
+    return out;
+}
+
+function toolsToPrompt(tools) {
+    if (!Array.isArray(tools) || tools.length === 0) return '';
+
+    const priorityNames = new Set([
+        'skill_view', 'skills_list', 'skill_manage',
+        'read_file', 'search_files', 'write_file', 'patch', 'terminal', 'process',
+        'web_search', 'web_extract', 'session_search', 'todo', 'clarify', 'delegate_task'
+    ]);
+
+    const schemas = tools.map(tool => {
+        const fn = tool?.function || tool;
+        if (!fn?.name) return null;
+        return {
+            name: fn.name,
+            description: truncateForPrompt(fn.description || '', priorityNames.has(fn.name) ? 420 : 180),
+            parameters: compactJsonSchema(fn.parameters || { type: 'object', properties: {} }),
+            priority: priorityNames.has(fn.name) ? 0 : 1
+        };
+    }).filter(Boolean).sort((a, b) => a.priority - b.priority || a.name.localeCompare(b.name));
+
+    if (schemas.length === 0) return '';
+
+    const toolNames = schemas.map(s => s.name).join(', ');
+    const skillRules = schemas.some(s => s.name === 'skill_view') ? `
+SKILL RULES ARE HARD REQUIREMENTS:
+- If the system prompt says a skill MUST be loaded, you MUST call skill_view before answering.
+- If the user asks about Hermes Agent setup/config/providers/models/tools/skills/gateway/plugins/troubleshooting, FIRST call:
+  {"tool_calls":[{"name":"skill_view","arguments":{"name":"hermes-agent"}}]}
+- If a task is related to any listed skill category, call skill_view with the most relevant skill name before giving the final answer.
+- After receiving a skill_view result, use it, then continue normally or call the next needed tool.
+` : '';
+
+    return `
+
+OPENAI-COMPATIBLE TOOL CALLING ADAPTER ACTIVE.
+You are behind a proxy that converts your JSON into real OpenAI tool_calls. Native prose like "I will use X" is NOT a tool call.
+
+Available tool names exactly:
+${toolNames}
+
+${skillRules}
+GENERAL TOOL RULES:
+- When an action, lookup, file read/write, command, web search, calculation, or verification is needed, CALL A TOOL instead of describing the action.
+- If the user asks you to do something, and a suitable tool exists, respond with a tool call first.
+- Never invent tool results. After tool results appear in the conversation, use them to continue.
+- Use exact tool names from the list above. Do not prefix names with namespaces.
+
+TOOL CALL OUTPUT FORMAT — respond ONLY with minified JSON, no markdown, no prose:
+{"tool_calls":[{"name":"tool_name","arguments":{}}]}
+
+Multiple calls are allowed:
+{"tool_calls":[{"name":"skill_view","arguments":{"name":"hermes-agent"}},{"name":"terminal","arguments":{"command":"pwd"}}]}
+
+Supported fallback shapes also work, but the format above is preferred.
+
+Compact tool schemas:
+${JSON.stringify(schemas.map(({priority, ...schema}) => schema), null, 2)}
+
+If no tool is needed and no skill rule applies, answer normally.`;
+}
+function parseToolCallJson(content) {
+    if (typeof content !== 'string') return null;
+    let text = content.trim();
+    const fence = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+    if (fence) text = fence[1].trim();
+    const first = text.indexOf('{');
+    const last = text.lastIndexOf('}');
+    if (first > 0 || last !== text.length - 1) {
+        if (first >= 0 && last > first) text = text.slice(first, last + 1);
+    }
+    const parseAttempts = [text];
+    // Qwen sometimes emits one missing brace in the common shape:
+    // {"tool_calls":[{"name":"x","arguments":{...}}]} -> may become ..."arguments":{...}]}
+    if (/^\s*\{\s*"tool_calls"\s*:\s*\[\s*\{/.test(text) && /\}\]\}\s*$/.test(text)) {
+        parseAttempts.push(text.replace(/\}\]\}\s*$/, '}}]}'));
+    }
+    if (/^\s*\{\s*"tool_calls"\s*:\s*\[/.test(text) && !/\}\s*$/.test(text)) {
+        parseAttempts.push(text + '}');
+    }
+
+    for (const candidate of parseAttempts) {
+        try {
+            const parsed = JSON.parse(candidate);
+            let calls = null;
+            if (Array.isArray(parsed.tool_calls)) {
+                calls = parsed.tool_calls;
+            } else if (parsed.function_call || parsed.tool_call) {
+                calls = [parsed.function_call || parsed.tool_call];
+            } else if (parsed.name || parsed.tool) {
+                calls = [parsed];
+            }
+            if (!calls || calls.length === 0) continue;
+            return calls.map((call, index) => {
+                const name = call.name || call.tool || call.function?.name;
+                const rawArgs = call.arguments ?? call.args ?? call.input ?? call.function?.arguments ?? {};
+                const args = typeof rawArgs === 'string' ? rawArgs : JSON.stringify(rawArgs || {});
+                if (!name) return null;
+                return {
+                    id: call.id || `call_${crypto.randomUUID().replace(/-/g, '').slice(0, 24)}`,
+                    type: 'function',
+                    function: { name, arguments: args },
+                    index
+                };
+            }).filter(Boolean);
+        } catch {
+            // try next repair candidate
+        }
+    }
+    return null;
+}
+
+function applyToolPrompt(systemMessage, tools) {
+    const prompt = toolsToPrompt(tools);
+    return prompt ? `${systemMessage || ''}${prompt}`.trim() : systemMessage;
+}
+
+function buildOpenAIToolResponse(result, mappedModel, toolCalls) {
+    return {
+        id: result.id || 'chatcmpl-' + Date.now(),
+        object: 'chat.completion',
+        created: Math.floor(Date.now() / 1000),
+        model: result.model || mappedModel || 'qwen-max-latest',
+        choices: [{
+            index: 0,
+            message: {
+                role: 'assistant',
+                content: null,
+                tool_calls: toolCalls.map(({ index, ...call }) => call)
+            },
+            finish_reason: 'tool_calls'
+        }],
+        usage: result.usage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+        chatId: result.chatId,
+        parentId: result.parentId || result.response_id,
+        x_qwen_chat_id: result.chatId,
+        x_qwen_parent_id: result.parentId || result.response_id
+    };
+}
+
+function writeToolCallsSse(res, mappedModel, result, toolCalls) {
+    const base = {
+        id: result.id || 'chatcmpl-stream',
+        object: 'chat.completion.chunk',
+        created: Math.floor(Date.now() / 1000),
+        model: result.model || mappedModel || 'qwen-max-latest'
+    };
+    res.write('data: ' + JSON.stringify({
+        ...base,
+        choices: [{ index: 0, delta: { role: 'assistant' }, finish_reason: null }]
+    }) + '\n\n');
+    for (const call of toolCalls) {
+        res.write('data: ' + JSON.stringify({
+            ...base,
+            choices: [{
+                index: 0,
+                delta: {
+                    tool_calls: [{
+                        index: call.index,
+                        id: call.id,
+                        type: 'function',
+                        function: call.function
+                    }]
+                },
+                finish_reason: null
+            }]
+        }) + '\n\n');
+    }
+    res.write('data: ' + JSON.stringify({
+        ...base,
+        choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }]
+    }) + '\n\n');
+    res.write('data: [DONE]\n\n');
+    res.end();
+}
+
 // ─── Helpers: streaming ──────────────────────────────────────────────────────
 
 async function handleStreamingResponse(res, mappedModel, messageContent, chatId, parentId, combinedTools, toolChoice, systemMessage) {
@@ -373,7 +669,7 @@ async function handleStreamingResponse(res, mappedModel, messageContent, chatId,
             writeSse({
                 id: 'chatcmpl-stream', object: 'chat.completion.chunk',
                 created: Math.floor(Date.now() / 1000), model: mappedModel,
-                choices: [{ index: 0, delta: { content: `Error: ${result.error}` }, finish_reason: null }]
+                choices: [{ index: 0, delta: { content: `Ошибка: ${result.error}` }, finish_reason: null }]
             });
         } else if (result.choices?.[0]?.message) {
             const content = String(result.choices[0].message.content || '');
@@ -429,7 +725,7 @@ function handleNonStreamingResponse(res, result, mappedModel) {
 
 router.post('/chat', async (req, res) => {
     try {
-        const { message, messages, model, chatId, parentId, stream } = req.body;
+        const { message, messages, model, chatId, parentId, stream, chatType, size, waitForCompletion } = req.body;
 
         // Поддержка как message, так и messages для совместимости
         let messageContent = message;
@@ -524,15 +820,25 @@ router.post('/chat', async (req, res) => {
                         created: Math.floor(Date.now() / 1000),
                         model: mappedModel || 'qwen-max-latest',
                         choices: [
-                            { index: 0, delta: { content: `Error: ${result.error}` }, finish_reason: 'stop' }
+                            { index: 0, delta: { content: `Ошибка: ${result.error}` }, finish_reason: 'stop' }
                         ]
                     });
                 } else if (!hasStreamedChunks && result.choices && result.choices[0] && result.choices[0].message && result.choices[0].message.content) {
-                    // Qwen вернул JSON вместо SSE - отправляем контент одним чанком
+                    // Qwen вернул JSON/обычный ответ вместо SSE - отправляем контент одним чанком
                     const content = result.choices[0].message.content;
                     logDebug(`JSON response content length: ${content.length}`);
                     if (typeof streamingCallback === 'function') {
                         streamingCallback(content);
+                    } else {
+                        writeSse({
+                            id: 'chatcmpl-stream',
+                            object: 'chat.completion.chunk',
+                            created: Math.floor(Date.now() / 1000),
+                            model: mappedModel || 'qwen-max-latest',
+                            choices: [
+                                { index: 0, delta: { content }, finish_reason: null }
+                            ]
+                        });
                     }
                 } else {
                     logDebug(`Result structure: ${JSON.stringify(Object.keys(result))}`);
@@ -569,7 +875,7 @@ router.post('/chat', async (req, res) => {
             }
         }
 
-            const result = await sendMessage(messageContent, mappedModel, isMeta ? null : chatId, isMeta ? null : parentId, null, null, null, systemMessage);
+            const result = await sendMessage(messageContent, mappedModel, isMeta ? null : chatId, isMeta ? null : parentId, null, null, null, systemMessage, chatType || 't2t', size || null, waitForCompletion ?? true);
 
         if (result.choices && result.choices[0] && result.choices[0].message) {
             const responseLength = result.choices[0].message.content ? result.choices[0].message.content.length : 0;
@@ -596,6 +902,33 @@ router.post('/chat', async (req, res) => {
     } catch (error) {
         logError('Ошибка при обработке запроса', error);
         res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+    }
+});
+
+router.get('/health', async (req, res) => {
+    try {
+        const modelData = getAllModels();
+        const tokens = listTokens();
+        const now = Date.now();
+        const availableAccounts = tokens.filter(t => (!t.resetAt || new Date(t.resetAt).getTime() <= now) && !t.invalid).length;
+
+        res.json({
+            ok: availableAccounts > 0,
+            service: 'FreeQwenApi',
+            watermark: FORGETMEAI_WATERMARK,
+            baseUrl: '/api',
+            models: modelData.models.length,
+            accounts: {
+                total: tokens.length,
+                available: availableAccounts,
+                invalid: tokens.filter(t => t.invalid).length,
+                waiting: tokens.filter(t => t.resetAt && new Date(t.resetAt).getTime() > now).length
+            },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        logError('Ошибка health check', error);
+        res.status(500).json({ ok: false, error: 'Health-проверка не удалась' });
     }
 });
 
@@ -747,14 +1080,15 @@ router.post('/chat/completions', async (req, res) => {
         // Извлекаем system message если есть
         const systemMsg = messages.find(msg => msg.role === 'system');
         const systemMessage = systemMsg ? systemMsg.content : null;
+        const { combinedTools } = buildCombinedTools(tools, functions, tool_choice);
 
-        const lastUserMessage = messages.filter(msg => msg.role === 'user').pop();
-        if (!lastUserMessage) {
+        const preparedInput = prepareOpenAIMessageInput(messages, combinedTools, effectiveChatId);
+        if (preparedInput.missingUser) {
             logError('В запросе нет сообщений от пользователя');
             return res.status(400).json({ error: 'В запросе нет сообщений от пользователя' });
         }
 
-        let messageContent = lastUserMessage.content;
+        let messageContent = preparedInput.messageContent;
         
         // Преобразуем OpenAI format content array во внутренний формат
         if (Array.isArray(messageContent)) {
@@ -772,7 +1106,10 @@ router.post('/chat/completions', async (req, res) => {
             });
         }
         
-        const files = lastUserMessage.files || []; // ← ИЗВЛЕКАЕМ FILES
+        const files = preparedInput.files || []; // ← ИЗВЛЕКАЕМ FILES
+        if (preparedInput.folded) {
+            logInfo('OpenAI/Hermes transcript folded into user message for context/tool-result preservation');
+        }
 
         if (isMeta) {
             effectiveChatId = null;
@@ -787,10 +1124,11 @@ router.post('/chat/completions', async (req, res) => {
         logInfo(`Используется модель: ${mappedModel}`);
         if (systemMessage) logInfo(`System message: ${systemMessage.substring(0, 50)}${systemMessage.length > 50 ? '...' : ''}`);
 
-        const { combinedTools } = buildCombinedTools(tools, functions, tool_choice);
+        const qwenTools = null; // Qwen Chat web API не умеет OpenAI tool schemas; эмулируем через JSON prompt ниже.
+        const toolAwareSystemMessage = applyToolPrompt(systemMessage, combinedTools);
 
-        if (systemMessage) {
-            logInfo(`System message: ${systemMessage.substring(0, 50)}${systemMessage.length > 50 ? '...' : ''}`);
+        if (toolAwareSystemMessage) {
+            logInfo(`System message: ${toolAwareSystemMessage.substring(0, 50)}${toolAwareSystemMessage.length > 50 ? '...' : ''}`);
         }
 
         // Логируем полную историю сообщений
@@ -813,13 +1151,13 @@ router.post('/chat/completions', async (req, res) => {
             };
 
             try {
-                const combinedTools = tools || (functions ? functions.map(fn => ({ type: 'function', function: fn })) : null);
                 const qwenChatId = await resolveQwenChatId(effectiveChatId, mappedModel);
 
                 // Setup streaming callback if stream=true
                 let streamingCallback = null;
                 let hasStreamedChunks = false;
-                if (stream) {
+                const captureToolCalls = Array.isArray(combinedTools) && combinedTools.length > 0;
+                if (stream && !captureToolCalls) {
                     streamingCallback = (chunk) => {
                         hasStreamedChunks = true;
                         writeSse({
@@ -840,15 +1178,23 @@ router.post('/chat/completions', async (req, res) => {
                     qwenChatId,
                     effectiveParentId,
                     files, // ← ПЕРЕДАЁМ FILES
-                    combinedTools,
+                    qwenTools,
                     tool_choice,
-                    systemMessage,
+                    toolAwareSystemMessage,
                     't2t',
                     null,
                     true,
                     0,
                     streamingCallback
                 );
+
+                if (captureToolCalls) {
+                    const toolCalls = parseToolCallJson(result?.choices?.[0]?.message?.content);
+                    if (toolCalls && toolCalls.length > 0) {
+                        writeToolCallsSse(res, mappedModel, result, toolCalls);
+                        return;
+                    }
+                }
 
                 // Сохраняем chatId в сессию для следующих запросов
                 if (!isMeta && result.chatId) {
@@ -869,15 +1215,25 @@ router.post('/chat/completions', async (req, res) => {
                         created: Math.floor(Date.now() / 1000),
                         model: mappedModel || 'qwen-max-latest',
                         choices: [
-                            { index: 0, delta: { content: `Error: ${result.error}` }, finish_reason: null }
+                            { index: 0, delta: { content: `Ошибка: ${result.error}` }, finish_reason: null }
                         ]
                     });
                 } else if (!hasStreamedChunks && result.choices && result.choices[0] && result.choices[0].message && result.choices[0].message.content) {
-                    // Qwen вернул JSON вместо SSE - отправляем контент одним чанком
+                    // Qwen вернул JSON/обычный ответ вместо SSE - отправляем контент одним чанком
                     const content = result.choices[0].message.content;
                     logDebug(`JSON response content length: ${content.length}`);
                     if (typeof streamingCallback === 'function') {
                         streamingCallback(content);
+                    } else {
+                        writeSse({
+                            id: 'chatcmpl-stream',
+                            object: 'chat.completion.chunk',
+                            created: Math.floor(Date.now() / 1000),
+                            model: mappedModel || 'qwen-max-latest',
+                            choices: [
+                                { index: 0, delta: { content }, finish_reason: null }
+                            ]
+                        });
                     }
                 } else {
                     logDebug(`Result structure: ${JSON.stringify(Object.keys(result))}`);
@@ -911,9 +1267,8 @@ router.post('/chat/completions', async (req, res) => {
                 res.end();
             }
         } else {
-            const combinedTools = tools || (functions ? functions.map(fn => ({ type: 'function', function: fn })) : null);
             const qwenChatId = await resolveQwenChatId(effectiveChatId, mappedModel);
-            const result = await sendMessage(messageContent, mappedModel, qwenChatId, effectiveParentId, null, combinedTools, tool_choice, systemMessage);
+            const result = await sendMessage(messageContent, mappedModel, qwenChatId, effectiveParentId, null, qwenTools, tool_choice, toolAwareSystemMessage);
 
             // Сохраняем chatId в сессию для следующих запросов
             if (!isMeta && result.chatId) {
@@ -930,6 +1285,11 @@ router.post('/chat/completions', async (req, res) => {
                 return res.status(500).json({
                     error: { message: result.error, type: "server_error" }
                 });
+            }
+
+            const toolCalls = parseToolCallJson(result?.choices?.[0]?.message?.content);
+            if (toolCalls && toolCalls.length > 0) {
+                return res.json(buildOpenAIToolResponse(result, mappedModel, toolCalls));
             }
 
             const openaiResponse = {
@@ -1045,14 +1405,15 @@ router.post('/v1/chat/completions', async (req, res) => {
         // Извлекаем system message если есть
         const systemMsg = messages.find(msg => msg.role === 'system');
         const systemMessage = systemMsg ? systemMsg.content : null;
+        const { combinedTools } = buildCombinedTools(tools, functions, tool_choice);
 
-        const lastUserMessage = messages.filter(msg => msg.role === 'user').pop();
-        if (!lastUserMessage) {
+        const preparedInput = prepareOpenAIMessageInput(messages, combinedTools, effectiveChatId);
+        if (preparedInput.missingUser) {
             logError('В запросе нет сообщений от пользователя');
             return res.status(400).json({ error: 'В запросе нет сообщений от пользователя' });
         }
 
-        let messageContent = lastUserMessage.content;
+        let messageContent = preparedInput.messageContent;
         
         // Преобразуем OpenAI format content array во внутренний формат
         if (Array.isArray(messageContent)) {
@@ -1070,7 +1431,10 @@ router.post('/v1/chat/completions', async (req, res) => {
             });
         }
         
-        const files = lastUserMessage.files || []; // ← ИЗВЛЕКАЕМ FILES
+        const files = preparedInput.files || []; // ← ИЗВЛЕКАЕМ FILES
+        if (preparedInput.folded) {
+            logInfo('OpenAI/Hermes transcript folded into user message for context/tool-result preservation');
+        }
 
         if (isMeta) {
             effectiveChatId = null;
@@ -1086,6 +1450,12 @@ router.post('/v1/chat/completions', async (req, res) => {
 
         if (systemMessage) {
             logInfo(`System message: ${systemMessage.substring(0, 50)}${systemMessage.length > 50 ? '...' : ''}`);
+        }
+
+        const qwenTools = null; // Qwen Chat web API не умеет OpenAI tool schemas; эмулируем через JSON prompt ниже.
+        const toolAwareSystemMessage = applyToolPrompt(systemMessage, combinedTools);
+        if (toolAwareSystemMessage) {
+            logInfo(`System message: ${toolAwareSystemMessage.substring(0, 50)}${toolAwareSystemMessage.length > 50 ? '...' : ''}`);
         }
 
         // Логируем полную историю сообщений
@@ -1108,13 +1478,13 @@ router.post('/v1/chat/completions', async (req, res) => {
             };
 
             try {
-                const combinedTools = tools || (functions ? functions.map(fn => ({ type: 'function', function: fn })) : null);
                 const qwenChatId = await resolveQwenChatId(effectiveChatId, mappedModel);
 
                 // Setup streaming callback if stream=true
                 let streamingCallback = null;
                 let hasStreamedChunks = false;
-                if (stream) {
+                const captureToolCalls = Array.isArray(combinedTools) && combinedTools.length > 0;
+                if (stream && !captureToolCalls) {
                     streamingCallback = (chunk) => {
                         hasStreamedChunks = true;
                         // OpenWebUI не нуждается в role в чанках - только контент
@@ -1136,15 +1506,23 @@ router.post('/v1/chat/completions', async (req, res) => {
                     qwenChatId,
                     effectiveParentId,
                     files, // ← ИЗВЛЕКАЕМ FILES
-                    combinedTools,
+                    qwenTools,
                     tool_choice,
-                    systemMessage,
+                    toolAwareSystemMessage,
                     't2t',
                     null,
                     true,
                     0,
                     streamingCallback
                 );
+
+                if (captureToolCalls) {
+                    const toolCalls = parseToolCallJson(result?.choices?.[0]?.message?.content);
+                    if (toolCalls && toolCalls.length > 0) {
+                        writeToolCallsSse(res, mappedModel, result, toolCalls);
+                        return;
+                    }
+                }
 
                 // Сохраняем chatId в сессию для следующих запросов
                 if (!isMeta && result.chatId) {
@@ -1160,15 +1538,25 @@ router.post('/v1/chat/completions', async (req, res) => {
                         created: Math.floor(Date.now() / 1000),
                         model: mappedModel || 'qwen-max-latest',
                         choices: [
-                            { index: 0, delta: { content: `Error: ${result.error}` }, finish_reason: 'stop' }
+                            { index: 0, delta: { content: `Ошибка: ${result.error}` }, finish_reason: 'stop' }
                         ]
                     });
                 } else if (!hasStreamedChunks && result.choices && result.choices[0] && result.choices[0].message && result.choices[0].message.content) {
-                    // Qwen вернул JSON вместо SSE - отправляем контент одним чанком
+                    // Qwen вернул JSON/обычный ответ вместо SSE - отправляем контент одним чанком
                     const content = result.choices[0].message.content;
                     logDebug(`JSON response content length: ${content.length}`);
                     if (typeof streamingCallback === 'function') {
                         streamingCallback(content);
+                    } else {
+                        writeSse({
+                            id: 'chatcmpl-stream',
+                            object: 'chat.completion.chunk',
+                            created: Math.floor(Date.now() / 1000),
+                            model: mappedModel || 'qwen-max-latest',
+                            choices: [
+                                { index: 0, delta: { content }, finish_reason: null }
+                            ]
+                        });
                     }
                 } else {
                     logDebug(`Result structure: ${JSON.stringify(Object.keys(result))}`);
@@ -1202,10 +1590,9 @@ router.post('/v1/chat/completions', async (req, res) => {
                 res.end();
             }
         } else {
-            const combinedTools = tools || (functions ? functions.map(fn => ({ type: 'function', function: fn })) : null);
             const qwenChatId = await resolveQwenChatId(effectiveChatId, mappedModel);
 
-            const result = await sendMessage(messageContent, mappedModel, qwenChatId, effectiveParentId, files, combinedTools, tool_choice, systemMessage);
+            const result = await sendMessage(messageContent, mappedModel, qwenChatId, effectiveParentId, files, qwenTools, tool_choice, toolAwareSystemMessage);
 
             // Сохраняем chatId в сессии для следующих запросов
             if (!isMeta && result.chatId) {
@@ -1231,6 +1618,11 @@ router.post('/v1/chat/completions', async (req, res) => {
                 messageText = result.choices[0].message.content || '';
             } else if (result.response && result.response.text) {
                 messageText = result.response.text;
+            }
+
+            const toolCalls = parseToolCallJson(messageText);
+            if (toolCalls && toolCalls.length > 0) {
+                return res.json(buildOpenAIToolResponse(result, mappedModel, toolCalls));
             }
 
             const openaiResponse = {
@@ -1375,106 +1767,250 @@ router.get('/chats/:chatId/history', async (req, res) => {
 });
 
 // ============================================
-// ЭНДПОИНТЫ ДЛЯ ГЕНЕРАЦИИ ИЗОБРАЖЕНИЙ
+// МЕДИА-ЭНДПОИНТЫ QWEN CHAT / DASHSCOPE
 // ============================================
 
+const CHAT_MEDIA_MODEL = 'qwen3-vl-plus';
+
+function normalizeQwenAspectRatio(size, fallback = '16:9') {
+    if (!size) return fallback;
+    const value = String(size).trim();
+    const ratioMap = {
+        '1024x1024': '1:1',
+        '512x512': '1:1',
+        '768x768': '1:1',
+        '960x960': '1:1',
+        '1024x1792': '9:16',
+        '1792x1024': '16:9',
+        '1536x864': '16:9',
+        '864x1536': '9:16'
+    };
+    if (ratioMap[value]) return ratioMap[value];
+    if (/^\d+:\d+$/.test(value)) return value;
+    return fallback;
+}
+
+function normalizeDashScopeSize(size) {
+    const sizeMap = {
+        '1024x1024': '1024*1024',
+        '1024x1792': '1024*1792',
+        '1792x1024': '1792*1024',
+        '512x512': '512*512',
+        '768x768': '768*768',
+        '960x960': '960*960'
+    };
+    return sizeMap[size] || '1024*1024';
+}
+
+function buildOpenAiImageResponse({ imageUrl, prompt, model, raw, provider = 'qwen-chat' }) {
+    return {
+        created: Math.floor(Date.now() / 1000),
+        watermark: FORGETMEAI_WATERMARK,
+        provider,
+        model,
+        data: [{ url: imageUrl, revised_prompt: prompt }],
+        raw
+    };
+}
+
+function buildVideoResponse({ result, prompt, model, waitForCompletion }) {
+    const videoUrl = result.video_url || extractMediaUrl(result, 'video');
+    return {
+        id: result.id || result.task_id || `video-${Date.now()}`,
+        object: videoUrl ? 'video.generation' : 'video.generation.task',
+        created: Math.floor(Date.now() / 1000),
+        watermark: FORGETMEAI_WATERMARK,
+        provider: 'qwen-chat',
+        model,
+        prompt,
+        status: videoUrl ? 'completed' : (result.status || 'processing'),
+        task_id: result.task_id || result.id || null,
+        video_url: videoUrl || null,
+        data: videoUrl ? [{ url: videoUrl }] : [],
+        waitForCompletion,
+        raw: result
+    };
+}
+
 /**
- * POST /api/images/generations - Генерация изображений по тексту (OpenAI DALL-E совместимый)
- * Формат запроса совместим с OpenAI Images API
+ * POST /api/images/generations
+ * По умолчанию генерирует изображения через Qwen Chat (`chatType: t2i`).
+ * Для старого DashScope-режима передайте `provider: "dashscope"`.
  */
 router.post('/images/generations', async (req, res) => {
     try {
-        const { prompt, model, n, size, response_format, user } = req.body;
+        const { prompt, model, n, size, response_format, provider } = req.body;
 
-        logInfo(`Получен запрос на генерацию изображения`);
-        logDebug(`Prompt: ${prompt?.substring(0, 100)}${prompt?.length > 100 ? '...' : ''}`);
+        logInfo('Получен запрос на генерацию изображения');
+        logDebug(`Запрос: ${prompt?.substring(0, 100)}${prompt?.length > 100 ? '...' : ''}`);
 
         if (!prompt) {
             return res.status(400).json({ error: 'Параметр "prompt" обязателен' });
         }
 
-        // Маппинг моделей OpenAI на Qwen Image модели
-        let imageModel = model || 'qwen-image-plus';
-        if (imageModel === 'dall-e-3' || imageModel === 'dall-e-2') {
-            imageModel = 'qwen-image-plus';
-        }
+        if (provider === 'dashscope') {
+            const apiKey = process.env.DASHSCOPE_API_KEY;
+            if (!apiKey) {
+                return res.status(503).json({
+                    error: 'DashScope API генерации изображений не настроен',
+                    message: 'Установите переменную окружения DASHSCOPE_API_KEY или используйте provider=qwen-chat'
+                });
+            }
 
-        // Проверка доступности API
-        const apiKey = process.env.DASHSCOPE_API_KEY;
-        if (!apiKey) {
-            return res.status(503).json({
-                error: 'API генерации изображений не настроен',
-                message: 'Установите переменную окружения DASHSCOPE_API_KEY'
+            let imageModel = model || 'qwen-image-plus';
+            if (imageModel === 'dall-e-3' || imageModel === 'dall-e-2') imageModel = 'qwen-image-plus';
+            const result = await generateImage(prompt, imageModel, {
+                n: n || 1,
+                size: normalizeDashScopeSize(size),
+                promptExtend: true,
+                watermark: false
             });
+
+            if (result.error) {
+                logError(`Ошибка генерации DashScope: ${result.error}`);
+                return res.status(500).json({ error: 'Ошибка генерации изображения', message: result.error });
+            }
+
+            return res.json(buildOpenAiImageResponse({
+                imageUrl: result.imageUrl,
+                prompt,
+                model: imageModel,
+                raw: result,
+                provider: 'dashscope'
+            }));
         }
 
-        // Преобразование размера из формата OpenAI в формат Qwen
-        let qwenSize = '1024*1024';
-        if (size) {
-            const sizeMap = {
-                '1024x1024': '1024*1024',
-                '1024x1792': '1024*1792',
-                '1792x1024': '1792*1024',
-                '512x512': '512*512',
-                '768x768': '768*768',
-                '960x960': '960*960'
-            };
-            qwenSize = sizeMap[size] || '1024*1024';
-        }
-
-        const result = await generateImage(prompt, imageModel, {
-            n: n || 1,
-            size: qwenSize,
-            promptExtend: true,
-            watermark: false
-        });
+        const chatModel = getMappedModel(model || CHAT_MEDIA_MODEL);
+        const aspectRatio = normalizeQwenAspectRatio(size, req.body.aspect_ratio || '16:9');
+        const result = await sendMessage(
+            prompt,
+            chatModel,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            't2i',
+            aspectRatio,
+            true
+        );
 
         if (result.error) {
-            logError(`Ошибка генерации: ${result.error}`);
-            return res.status(500).json({
-                error: 'Ошибка генерации изображения',
-                message: result.error
+            logError(`Ошибка генерации Qwen Chat image: ${result.error}`);
+            return res.status(500).json({ error: 'Ошибка генерации изображения через Qwen Chat', message: result.error, details: result.details });
+        }
+
+        const imageUrl = extractMediaUrl(result, 'image') || result.choices?.[0]?.message?.content || null;
+        if (!imageUrl) {
+            return res.status(502).json({
+                error: 'Qwen Chat не вернул URL изображения',
+                raw: result
             });
         }
 
-        // Формируем ответ в формате OpenAI Images API
-        const responseData = {
-            created: Math.floor(Date.now() / 1000),
-            data: [{
-                url: result.imageUrl,
-                revised_prompt: prompt
-            }]
-        };
-
-        logInfo(`Изображение сгенерировано: ${result.imageUrl}`);
-        res.json(responseData);
-
+        logInfo(`Изображение Qwen Chat сгенерировано: ${imageUrl}`);
+        return res.json(buildOpenAiImageResponse({ imageUrl, prompt, model: chatModel, raw: result }));
     } catch (error) {
         logError('Ошибка при генерации изображения', error);
-        res.status(500).json({
-            error: 'Внутренняя ошибка сервера',
-            message: error.message
-        });
+        res.status(500).json({ error: 'Внутренняя ошибка сервера', message: error.message });
     }
 });
 
 /**
- * GET /api/images/models - Получение списка моделей генерации изображений
+ * POST /api/videos/generations - Генерация видео через Qwen Chat (`chatType: t2v`).
+ */
+router.post('/videos/generations', async (req, res) => {
+    try {
+        const { prompt, model, size, wait, waitForCompletion } = req.body;
+        const shouldWait = waitForCompletion ?? wait ?? true;
+
+        logInfo('Получен запрос на генерацию видео через Qwen Chat');
+        logDebug(`Видео-запрос: ${prompt?.substring(0, 100)}${prompt?.length > 100 ? '...' : ''}`);
+
+        if (!prompt) {
+            return res.status(400).json({ error: 'Параметр "prompt" обязателен' });
+        }
+
+        const chatModel = getMappedModel(model || CHAT_MEDIA_MODEL);
+        const aspectRatio = normalizeQwenAspectRatio(size, req.body.aspect_ratio || '16:9');
+        const result = await sendMessage(
+            prompt,
+            chatModel,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            't2v',
+            aspectRatio,
+            shouldWait
+        );
+
+        if (result.error) {
+            logError(`Ошибка генерации Qwen Chat video: ${result.error}`);
+            return res.status(500).json({ error: 'Ошибка генерации видео через Qwen Chat', message: result.error, details: result.details, task_id: result.task_id });
+        }
+
+        const response = buildVideoResponse({ result, prompt, model: chatModel, waitForCompletion: shouldWait });
+        logInfo(response.video_url ? `Видео Qwen Chat сгенерировано: ${response.video_url}` : `Видео-задача создана: ${response.task_id}`);
+        return res.json(response);
+    } catch (error) {
+        logError('Ошибка при генерации видео', error);
+        res.status(500).json({ error: 'Внутренняя ошибка сервера', message: error.message });
+    }
+});
+
+/**
+ * GET /api/tasks/status/:taskId - статус долгой задачи Qwen Chat (видео и будущие async-функции).
+ */
+router.get('/tasks/status/:taskId', async (req, res) => {
+    try {
+        const { taskId } = req.params;
+        const wait = ['1', 'true', 'yes'].includes(String(req.query.wait || '').toLowerCase());
+        if (!taskId) return res.status(400).json({ error: 'taskId обязателен' });
+
+        const result = await pollQwenTaskStatus(taskId, wait);
+        if (result.error && !result.data) {
+            return res.status(500).json(result);
+        }
+        return res.json({ watermark: FORGETMEAI_WATERMARK, ...result });
+    } catch (error) {
+        logError('Ошибка при проверке статуса задачи', error);
+        res.status(500).json({ error: 'Внутренняя ошибка сервера', message: error.message });
+    }
+});
+
+/**
+ * GET /api/images/models - модели для генерации изображений.
  */
 router.get('/images/models', async (req, res) => {
     try {
-        const models = getAvailableImageModels();
-        
+        const dashScopeModels = getAvailableImageModels();
         res.json({
             object: 'list',
-            data: models.map(model => ({
-                id: model,
-                object: 'model',
-                created: Date.now(),
-                owned_by: 'qwen',
-                permission: [],
-                capability: 'image_generation'
-            }))
+            watermark: FORGETMEAI_WATERMARK,
+            data: [
+                {
+                    id: CHAT_MEDIA_MODEL,
+                    object: 'model',
+                    created: Date.now(),
+                    owned_by: 'qwen-chat',
+                    permission: [],
+                    capability: 'qwen_chat_image_generation',
+                    provider: 'qwen-chat'
+                },
+                ...dashScopeModels.map(model => ({
+                    id: model,
+                    object: 'model',
+                    created: Date.now(),
+                    owned_by: 'qwen',
+                    permission: [],
+                    capability: 'image_generation',
+                    provider: 'dashscope'
+                }))
+            ]
         });
     } catch (error) {
         logError('Ошибка при получении списка моделей изображений', error);
@@ -1483,26 +2019,72 @@ router.get('/images/models', async (req, res) => {
 });
 
 /**
- * GET /api/images/status - Проверка статуса API генерации изображений
+ * GET /api/videos/models - модели для генерации видео через Qwen Chat.
+ */
+router.get('/videos/models', async (req, res) => {
+    res.json({
+        object: 'list',
+        watermark: FORGETMEAI_WATERMARK,
+        data: [{
+            id: CHAT_MEDIA_MODEL,
+            object: 'model',
+            created: Date.now(),
+            owned_by: 'qwen-chat',
+            permission: [],
+            capability: 'qwen_chat_video_generation',
+            provider: 'qwen-chat'
+        }]
+    });
+});
+
+/**
+ * GET /api/images/status - Проверка статуса генерации изображений.
  */
 router.get('/images/status', async (req, res) => {
     try {
         const apiKey = process.env.DASHSCOPE_API_KEY;
-        const isAvailable = await checkImageApiAvailability();
+        const dashScopeAvailable = await checkImageApiAvailability();
+        const tokens = listTokens();
+        const now = Date.now();
+        const qwenChatAvailable = tokens.some(t => (!t.resetAt || new Date(t.resetAt).getTime() <= now) && !t.invalid);
 
         res.json({
-            available: isAvailable,
-            apiKeyConfigured: !!apiKey,
-            message: isAvailable 
-                ? 'API генерации изображений доступен' 
-                : apiKey 
-                    ? 'API недоступен или неверные учётные данные'
-                    : 'API ключ DASHSCOPE_API_KEY не настроен'
+            watermark: FORGETMEAI_WATERMARK,
+            qwenChat: {
+                available: qwenChatAvailable,
+                model: CHAT_MEDIA_MODEL,
+                message: qwenChatAvailable ? 'Qwen Chat генерация изображений доступна' : 'Нет активных аккаунтов Qwen Chat'
+            },
+            dashscope: {
+                available: dashScopeAvailable,
+                apiKeyConfigured: !!apiKey,
+                message: dashScopeAvailable
+                    ? 'DashScope API генерации изображений доступен'
+                    : apiKey
+                        ? 'DashScope API недоступен или неверные учётные данные'
+                        : 'DASHSCOPE_API_KEY не настроен'
+            }
         });
     } catch (error) {
         logError('Ошибка при проверке статуса API изображений', error);
         res.status(500).json({ error: 'Внутренняя ошибка сервера' });
     }
+});
+
+/**
+ * GET /api/videos/status - Проверка готовности видео-генерации Qwen Chat.
+ */
+router.get('/videos/status', async (req, res) => {
+    const tokens = listTokens();
+    const now = Date.now();
+    const availableAccounts = tokens.filter(t => (!t.resetAt || new Date(t.resetAt).getTime() <= now) && !t.invalid).length;
+    res.json({
+        watermark: FORGETMEAI_WATERMARK,
+        available: availableAccounts > 0,
+        model: CHAT_MEDIA_MODEL,
+        accounts: { total: tokens.length, available: availableAccounts },
+        message: availableAccounts > 0 ? 'Qwen Chat генерация видео доступна' : 'Нет активных аккаунтов Qwen Chat'
+    });
 });
 
 export default router;

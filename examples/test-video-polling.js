@@ -1,7 +1,7 @@
 const BASE_URL = 'http://localhost:3264/api';
 
 async function testServerSidePolling() {
-    console.log('\n=== Режим 1: Server-Side Polling (waitForCompletion=true) ===');
+    console.log('\n=== Режим 1: polling на стороне сервера (waitForCompletion=true) ===');
     console.log('Сервер сам ждёт завершения...');
 
     const start = Date.now();
@@ -11,7 +11,7 @@ async function testServerSidePolling() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                message: 'A peaceful mountain landscape with flowing rivers',
+                message: 'Мирный горный пейзаж с текущими реками',
                 model: 'qwen3-vl-plus',
                 chatType: 't2v',
                 size: '16:9',
@@ -23,7 +23,7 @@ async function testServerSidePolling() {
         const sec = ((Date.now() - start) / 1000).toFixed(1);
 
         if (data.error) {
-            console.log(`FAIL (${sec}s): ${data.error}`);
+            console.log(`ОШИБКА (${sec}s): ${data.error}`);
             return { ok: false, sec };
         }
 
@@ -32,13 +32,13 @@ async function testServerSidePolling() {
         return { ok: true, sec };
     } catch (e) {
         const sec = ((Date.now() - start) / 1000).toFixed(1);
-        console.log(`FAIL (${sec}s): ${e.message}`);
+        console.log(`ОШИБКА (${sec}s): ${e.message}`);
         return { ok: false, sec };
     }
 }
 
 async function testClientSidePolling() {
-    console.log('\n=== Режим 2: Client-Side Polling (waitForCompletion=false) ===');
+    console.log('\n=== Режим 2: polling на стороне клиента (waitForCompletion=false) ===');
     console.log('Сервер сразу отдаёт task_id, клиент сам поллит...');
 
     const start = Date.now();
@@ -48,7 +48,7 @@ async function testClientSidePolling() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                message: 'A serene forest with sunlight filtering through trees',
+                message: 'Тихий лес, солнечные лучи проходят сквозь деревья',
                 model: 'qwen3-vl-plus',
                 chatType: 't2v',
                 size: '16:9',
@@ -60,7 +60,7 @@ async function testClientSidePolling() {
         const reqSec = ((Date.now() - start) / 1000).toFixed(1);
 
         if (!taskData.task_id) {
-            console.log(`FAIL (${reqSec}s): task_id не получен`);
+            console.log(`ОШИБКА (${reqSec}s): task_id не получен`);
             return { ok: false, sec: reqSec };
         }
 
@@ -92,24 +92,24 @@ async function testClientSidePolling() {
             }
 
             if (status === 'failed' || status === 'error') {
-                console.log(`FAIL (${sec}s): таск упал`);
+                console.log(`ОШИБКА (${sec}s): таск упал`);
                 return { ok: false, sec, attempts: i };
             }
         }
 
         const sec = ((Date.now() - start) / 1000).toFixed(1);
-        console.log(`TIMEOUT (${sec}s, ${maxAttempts} попыток)`);
+        console.log(`ТАЙМАУТ (${sec}s, ${maxAttempts} попыток)`);
         return { ok: false, sec, timeout: true };
     } catch (e) {
         const sec = ((Date.now() - start) / 1000).toFixed(1);
-        console.log(`FAIL (${sec}s): ${e.message}`);
+        console.log(`ОШИБКА (${sec}s): ${e.message}`);
         return { ok: false, sec };
     }
 }
 
 async function main() {
     console.log('==============================================');
-    console.log(' Video Generation: Polling Comparison Test');
+    console.log(' Тест сравнения polling для генерации видео');
     console.log('==============================================');
 
     const server = await testServerSidePolling();
@@ -122,8 +122,8 @@ async function main() {
     console.log('\n==============================================');
     console.log(' Результаты');
     console.log('==============================================');
-    console.log(`Server-Side: ${server.ok ? 'OK' : 'FAIL'} (${server.sec}s)`);
-    console.log(`Client-Side: ${client.ok ? 'OK' : 'FAIL'} (${client.sec}s)`);
+    console.log(`Серверный polling: ${server.ok ? 'OK' : 'ОШИБКА'} (${server.sec}s)`);
+    console.log(`Клиентский polling: ${client.ok ? 'OK' : 'ОШИБКА'} (${client.sec}s)`);
     console.log('==============================================\n');
 
     process.exit(server.ok || client.ok ? 0 : 1);

@@ -31,11 +31,11 @@ try {
         -UseBasicParsing
     
     $json1 = $response1.Content | ConvertFrom-Json
-    Write-Host "✅ Response: " -ForegroundColor Green
+    Write-Host "✅ Ответ: " -ForegroundColor Green
     Write-Host $json1.choices[0].message.content
     Write-Host "Tokens: input=$($json1.usage.input_tokens) output=$($json1.usage.output_tokens)" -ForegroundColor Gray
 } catch {
-    Write-Host "❌ Error: $_" -ForegroundColor Red
+    Write-Host "❌ Ошибка: $_" -ForegroundColor Red
 }
 
 Write-Host ""
@@ -84,7 +84,7 @@ try {
     Write-Host "Total response: $streamContent" -ForegroundColor Gray
     
 } catch {
-    Write-Host "❌ Error: $_" -ForegroundColor Red
+    Write-Host "❌ Ошибка: $_" -ForegroundColor Red
 }
 
 Write-Host "`n╔════════════════════════════════════════╗"

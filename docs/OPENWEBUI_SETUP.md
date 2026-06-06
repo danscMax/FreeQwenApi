@@ -5,27 +5,27 @@
 ### Шаг 1: Администрирование
 1. Откройте Open WebUI
 2. Войдите как администратор
-3. Перейдите в **Settings** → **Connections**
+3. Перейдите в **Настройки (Settings)** → **Подключения (Connections)**
 
 ### Шаг 2: Добавление API эндпоинта
-- **Base URL**: `http://host.docker.internal:3264/api` (для Docker)
+- **Базовый URL (Base URL)**: `http://host.docker.internal:3264/api` (для Docker)
   - Или: `http://localhost:3264/api` (для локального запуска)
-- **API Key**: любой (если файл `Authorization.txt` пустой)
+- **API-ключ (API Key)**: любой (если файл `Authorization.txt` пустой)
 
 ## 2. Настройка генерации изображений
 
 ### Шаг 1: Включение генерации
-1. Перейдите в **Settings** → **Images**
-2. Включите **Enable Image Generation**
+1. Перейдите в **Настройки (Settings)** → **Изображения (Images)**
+2. Включите **Включить генерацию изображений (Enable Image Generation)**
 
 ### Шаг 2: Настройка параметров
-- **Engine**: OpenAI Compatible
-- **Base URL**: `http://host.docker.internal:3264/api`
-- **API Key**: любой (если авторизация отключена)
-- **Model**: `qwen-image-plus`
+- **Движок (Engine)**: OpenAI Compatible
+- **Базовый URL (Base URL)**: `http://host.docker.internal:3264/api`
+- **API-ключ (API Key)**: любой (если авторизация отключена)
+- **Модель (Model)**: `qwen-image-plus`
 
 ### Шаг 3: Проверка подключения
-Нажмите **Test Connection** - должно показать успех.
+Нажмите **Проверить подключение (Test Connection)** - должно показать успех.
 
 ## 3. Использование генерации изображений
 
@@ -33,7 +33,7 @@
 1. Откройте любой чат
 2. Нажмите на иконку 🎨 (Image Generation)
 3. Введите запрос: *"Космическая станция на орбите Марса, реализм"*
-4. Нажмите **Generate**
+4. Нажмите **Сгенерировать (Generate)**
 
 ### Через команду:
 ```
@@ -95,24 +95,24 @@ services:
 
 ### Тест генерации изображений:
 ```
-1. Перейдите в раздел Images
-2. Prompt: "Красивый закат над горами"
-3. Model: qwen-image-plus
-4. Нажмите Generate
+1. Перейдите в раздел изображений (Images)
+2. Запрос (Prompt): "Красивый закат над горами"
+3. Модель (Model): qwen-image-plus
+4. Нажмите Generate / «Сгенерировать»
 5. Должно сгенерироваться изображение
 ```
 
 ## 7. Возможные проблемы
 
-### "Connection refused"
+### "Connection refused" / «соединение отклонено»
 - Убедитесь, что FreeQwenApi запущен
 - Проверьте порт (по умолчанию 3264)
 
-### "API key required"
+### "API key required" / «требуется API-ключ»
 - Добавьте любой API ключ в настройках Open WebUI
 - Или оставьте файл `Authorization.txt` пустым
 
-### "Model not found"
+### "Model not found" / «модель не найдена»
 - Обновите список моделей в Open WebUI
 - Проверьте, что модель есть в `AvaibleModels.txt`
 

@@ -375,7 +375,7 @@ def _parse_qwen_error_json(parsed: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     is_rate_limited = top_code == "RateLimited" or nested_code == "RateLimited"
     return {
         "status": 429 if is_rate_limited else 500,
-        "error": "Qwen API Error",
+        "error": "Ошибка Qwen API",
         "details": json.dumps(parsed, ensure_ascii=False)
     }
 
@@ -417,7 +417,7 @@ async def execute_qwen_completion(token_obj, chat_id, payload, on_chunk=None):
                 return {
                     "success": False,
                     "status": response.status_code,
-                    "error": "Qwen API Error",
+                    "error": "Ошибка Qwen API",
                     "details": body
                 }
 
@@ -484,7 +484,7 @@ async def execute_qwen_completion(token_obj, chat_id, payload, on_chunk=None):
                 if chunk.get("code") == "RateLimited" or (chunk.get("code") and chunk.get("detail")):
                     return {"success": False, "status": 429, "error": "RateLimited", "details": json.dumps(chunk, ensure_ascii=False)}
                 if chunk.get("error") and not chunk.get("choices"):
-                    return {"success": False, "status": 500, "error": "Qwen API Error", "details": json.dumps(chunk, ensure_ascii=False)}
+                    return {"success": False, "status": 500, "error": "Ошибка Qwen API", "details": json.dumps(chunk, ensure_ascii=False)}
 
                 created_meta = chunk.get("response.created")
                 if isinstance(created_meta, dict) and created_meta.get("response_id"):
@@ -574,7 +574,7 @@ async def _stream_openai_response(token_info, chat_id: str, payload: Dict[str, A
         result = await task
         if not result.get("success"):
             if not has_streamed_chunks:
-                err_text = f"Error: {result.get('error', 'Qwen API Error')}"
+                err_text = f"Ошибка: {result.get('error', 'Ошибка Qwen API')}"
                 yield "data: " + json.dumps({
                     "id": "chatcmpl-stream",
                     "object": "chat.completion.chunk",
@@ -663,7 +663,7 @@ async def handle_chat_completions(body: Dict[str, Any]):
             status = 500
         return JSONResponse(
             status_code=status,
-            content={"error": {"message": result.get("details") or result.get("error") or "Qwen API Error", "type": "upstream_error"}}
+            content={"error": {"message": result.get("details") or result.get("error") or "Ошибка Qwen API", "type": "upstream_error"}}
         )
 
     response_parent_id = result.get("response_id") or parent_id

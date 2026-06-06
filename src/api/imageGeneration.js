@@ -33,7 +33,7 @@ export async function generateImage(prompt, model = 'qwen-image-plus', options =
 
     try {
         logInfo(`Генерация изображения через ${model}...`);
-        logDebug(`Prompt: ${prompt.substring(0, 100)}${prompt.length > 100 ? '...' : ''}`);
+        logDebug(`Запрос: ${prompt.substring(0, 100)}${prompt.length > 100 ? '...' : ''}`);
 
         const payload = {
             model: model,

@@ -7,20 +7,20 @@ async function testChat() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                message: 'What is the capital of France?',
+                message: 'Назови столицу Франции.',
                 model: 'qwen-max-latest'
             })
         });
 
         const data = await response.json();
         if (data.error) {
-            console.log('FAIL:', data.error);
+            console.log('ОШИБКА:', data.error);
             return false;
         }
         console.log('OK:', data.choices[0].message.content.substring(0, 100));
         return true;
     } catch (error) {
-        console.log('FAIL:', error.message);
+        console.log('ОШИБКА:', error.message);
         return false;
     }
 }
@@ -32,7 +32,7 @@ async function testImageGeneration() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                message: 'A beautiful sunset over a calm ocean with orange and pink clouds',
+                message: 'Красивый закат над спокойным океаном с оранжевыми и розовыми облаками',
                 model: 'qwen3-vl-plus',
                 chatType: 't2i',
                 size: '16:9'
@@ -41,13 +41,13 @@ async function testImageGeneration() {
 
         const data = await response.json();
         if (data.error) {
-            console.log('FAIL:', data.error);
+            console.log('ОШИБКА:', data.error);
             return false;
         }
         console.log('OK:', data.choices[0].message.content.substring(0, 120));
         return true;
     } catch (error) {
-        console.log('FAIL:', error.message);
+        console.log('ОШИБКА:', error.message);
         return false;
     }
 }
@@ -60,7 +60,7 @@ async function testVideoGeneration() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                message: 'A serene forest with sunlight filtering through the trees',
+                message: 'Тихий лес, солнечные лучи проходят сквозь деревья',
                 model: 'qwen3-vl-plus',
                 chatType: 't2v',
                 size: '16:9'
@@ -69,20 +69,20 @@ async function testVideoGeneration() {
 
         const data = await response.json();
         if (data.error) {
-            console.log('FAIL:', data.error);
+            console.log('ОШИБКА:', data.error);
             return false;
         }
         console.log('OK:', data.video_url || data.choices[0].message.content.substring(0, 120));
         return true;
     } catch (error) {
-        console.log('FAIL:', error.message);
+        console.log('ОШИБКА:', error.message);
         return false;
     }
 }
 
 async function main() {
     console.log('==============================');
-    console.log(' FreeQwenApi Feature Tests');
+    console.log(' Тесты возможностей FreeQwenApi');
     console.log('==============================');
 
     const chat = await testChat();
@@ -92,9 +92,9 @@ async function main() {
     console.log('\n==============================');
     console.log(' Результаты');
     console.log('==============================');
-    console.log('Чат (t2t):', chat ? 'OK' : 'FAIL');
-    console.log('Изображение (t2i):', image ? 'OK' : 'FAIL');
-    console.log('Видео (t2v):', video ? 'OK' : 'FAIL');
+    console.log('Чат (t2t):', chat ? 'OK' : 'ОШИБКА');
+    console.log('Изображение (t2i):', image ? 'OK' : 'ОШИБКА');
+    console.log('Видео (t2v):', video ? 'OK' : 'ОШИБКА');
     console.log('==============================\n');
 
     process.exit(chat && image && video ? 0 : 1);

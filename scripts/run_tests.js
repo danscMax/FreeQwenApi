@@ -8,7 +8,7 @@ async function run() {
   try {
     console.log('POST 1: Меня зовут Дима');
     const r1 = await axios.post(base, { model: 'qwen-max-latest', messages: [{ role: 'user', content: 'Меня зовут Дима' }] }, { headers, timeout: 120000 });
-    console.log('Response 1 status:', r1.status);
+    console.log('Статус ответа 1:', r1.status);
     console.log(JSON.stringify(r1.data, null, 2));
     fs.writeFileSync('./tmp_response1.json', JSON.stringify(r1.data, null, 2), 'utf8');
 
@@ -16,7 +16,7 @@ async function run() {
 
     console.log('\nPOST 2: Как меня зовут?');
     const r2 = await axios.post(base, { model: 'qwen-max-latest', messages: [{ role: 'user', content: 'Как меня зовут?' }] }, { headers, timeout: 120000 });
-    console.log('Response 2 status:', r2.status);
+    console.log('Статус ответа 2:', r2.status);
     console.log(JSON.stringify(r2.data, null, 2));
     fs.writeFileSync('./tmp_response2.json', JSON.stringify(r2.data, null, 2), 'utf8');
 
@@ -34,9 +34,9 @@ async function run() {
     }
 
   } catch (e) {
-    console.error('Error running tests:', e.toString());
+    console.error('Ошибка при запуске тестов:', e.toString());
     if (e.response && e.response.data) {
-      console.error('Response data:', JSON.stringify(e.response.data, null, 2));
+      console.error('Данные ответа:', JSON.stringify(e.response.data, null, 2));
     }
   }
 }
