@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FreeQwenApi — Дашборд</title>
+<style>
+  :root{
+    --bg:#0d1117; --card:#161b22; --card2:#1c2230; --border:#30363d;
+    --text:#e6edf3; --muted:#8b949e; --accent:#58a6ff; --accent2:#388bfd;
+    --ok:#3fb950; --warn:#d29922; --err:#f85149; --mono:ui-monospace,SFMono-Regular,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.5}
+  .wrap{max-width:1080px;margin:0 auto;padding:24px 20px 60px}
+  header{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:8px}
+  h1{font-size:22px;margin:0;display:flex;align-items:center;gap:10px}
+  h1 .logo{color:var(--accent)}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:24px}
+  .status-pill{display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border-radius:999px;border:1px solid var(--border);background:var(--card);font-size:13px;font-weight:600}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--muted)}
+  .dot.on{background:var(--ok);box-shadow:0 0 8px var(--ok)}
+  .dot.off{background:var(--err);box-shadow:0 0 8px var(--err)}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media(max-width:760px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px 18px}
+  .card h2{font-size:14px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:0 0 14px}
+  .row{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+  .row:last-child{margin-bottom:0}
+  label.k{width:96px;color:var(--muted);font-size:13px;flex-shrink:0}
+  .val{flex:1;font-family:var(--mono);font-size:13px;background:var(--card2);border:1px solid var(--border);border-radius:7px;padding:8px 10px;overflow:auto;white-space:nowrap}
+  button{font-family:inherit;cursor:pointer;border-radius:7px;border:1px solid var(--border);background:var(--card2);color:var(--text);padding:8px 12px;font-size:13px;transition:.15s}
+  button:hover{border-color:var(--accent);color:var(--accent)}
+  button.primary{background:var(--accent2);border-color:var(--accent2);color:#fff;font-weight:600}
+  button.primary:hover{background:var(--accent);color:#fff}
+  button.danger:hover{border-color:var(--err);color:var(--err)}
+  button.copy{padding:6px 10px;font-size:12px;flex-shrink:0}
+  .hint{color:var(--muted);font-size:12.5px;margin-top:12px}
+  .hint code{font-family:var(--mono);background:var(--card2);padding:1px 5px;border-radius:4px;color:var(--accent)}
+  .acc{display:flex;align-items:center;gap:10px;padding:9px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;background:var(--card2)}
+  .acc .id{font-weight:600;font-size:13px}
+  .acc .meta{color:var(--muted);font-size:12px;font-family:var(--mono)}
+  .badge{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;text-transform:uppercase;letter-spacing:.03em}
+  .badge.OK{background:rgba(63,185,80,.15);color:var(--ok)}
+  .badge.WAIT{background:rgba(210,153,34,.15);color:var(--warn)}
+  .badge.INVALID,.badge.EXPIRED{background:rgba(248,81,73,.15);color:var(--err)}
+  .spacer{flex:1}
+  textarea,input[type=text]{width:100%;font-family:inherit;font-size:13px;background:var(--card2);border:1px solid var(--border);border-radius:7px;padding:9px 10px;color:var(--text);resize:vertical}
+  textarea:focus,input:focus{outline:none;border-color:var(--accent)}
+  select{font-family:inherit;font-size:13px;background:var(--card2);border:1px solid var(--border);border-radius:7px;padding:8px 10px;color:var(--text)}
+  .models{display:flex;flex-wrap:wrap;gap:7px;max-height:200px;overflow:auto}
+  .chip{font-family:var(--mono);font-size:12px;background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:5px 9px;cursor:pointer}
+  .chip:hover{border-color:var(--accent);color:var(--accent)}
+  .full{grid-column:1/-1}
+  .feat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  @media(max-width:760px){.feat-grid{grid-template-columns:1fr}}
+  .feat{background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:11px 12px;display:flex;flex-direction:column;gap:4px}
+  .feat b{font-size:13.5px}
+  .feat span{color:var(--muted);font-size:12.5px}
+  .feat code{font-family:var(--mono);color:var(--accent);font-size:11.5px}
+  .testout{margin-top:12px;background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:13.5px;min-height:42px;white-space:pre-wrap}
+  .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--ok);color:#04150a;font-weight:600;padding:10px 18px;border-radius:8px;opacity:0;transition:.25s;pointer-events:none;font-size:13px}
+  .toast.show{opacity:1}
+  footer{margin-top:28px;text-align:center;color:var(--muted);font-size:12px}
+  a{color:var(--accent);text-decoration:none}
+  .err-text{color:var(--err)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="logo">◆</span> FreeQwenApi</h1>
+    <span class="status-pill"><span class="dot" id="statusDot"></span><span id="statusText">проверка…</span></span>
+  </header>
+  <div class="sub">Локальный OpenAI-совместимый прокси к Qwen Chat. Подставьте Base URL и любой ключ в любой клиент, который умеет OpenAI API.</div>
+
+  <div class="grid">
+    <!-- Подключение -->
+    <div class="card">
+      <h2>Как подключить</h2>
+      <div class="row">
+        <label class="k">Base URL</label>
+        <div class="val" id="baseUrl">—</div>
+        <button class="copy" data-copy="baseUrl">копировать</button>
+      </div>
+      <div class="row">
+        <label class="k">Для Open WebUI</label>
+        <div class="val" id="baseUrlApi">—</div>
+        <button class="copy" data-copy="baseUrlApi">копировать</button>
+      </div>
+      <div class="row">
+        <label class="k">API Key</label>
+        <div class="val" id="apiKey">любой непустой (например <b>sk-qwen</b>)</div>
+        <button class="copy" data-copy-text="sk-qwen">копировать</button>
+      </div>
+      <div class="row">
+        <label class="k">Модель</label>
+        <div class="val">qwen3.7-max</div>
+        <button class="copy" data-copy-text="qwen3.7-max">копировать</button>
+      </div>
+      <div class="hint">
+        Подходит для <b>Open WebUI, Cherry Studio, Chatbox, LibreChat, SillyTavern, LiteLLM, OpenAI SDK</b> и т.п.
+        Open WebUI обычно использует URL c <code>/api</code>, большинство клиентов и OpenAI SDK — c <code>/api/v1</code>.
+      </div>
+    </div>
+
+    <!-- Аккаунты -->
+    <div class="card">
+      <h2>Аккаунты Qwen</h2>
+      <div id="accList"><div class="hint">загрузка…</div></div>
+      <div class="row" style="margin-top:14px">
+        <input type="text" id="newToken" placeholder="Вставьте токен Qwen (eyJ…) и нажмите «Добавить»" autocomplete="off" spellcheck="false">
+        <button class="primary" id="addBtn">Добавить</button>
+      </div>
+      <div class="hint" id="addHint">Токен берётся в браузере: открыть <code>chat.qwen.ai</code> → F12 → Console → <code>copy(localStorage.token)</code>.</div>
+    </div>
+
+    <!-- Возможности -->
+    <div class="card full">
+      <h2>Что умеет</h2>
+      <div class="feat-grid">
+        <div class="feat"><b>💬 Чат и агенты</b><span><code>/api/chat/completions</code>, <code>/api/v1/chat/completions</code> — текст, стриминг, tool calling (функции)</span></div>
+        <div class="feat"><b>🖼 Картинки</b><span><code>/api/images/generations</code> — через Qwen Chat, без DashScope-ключа</span></div>
+        <div class="feat"><b>🎬 Видео</b><span><code>/api/videos/generations</code> — генерация с ожиданием задачи</span></div>
+        <div class="feat"><b>📎 Файлы</b><span><code>/api/files/upload</code> — загрузка и анализ файлов/изображений</span></div>
+        <div class="feat"><b>🔁 Мультиаккаунт</b><span>round-robin по аккаунтам — обход лимитов Qwen Chat</span></div>
+        <div class="feat"><b>🧩 Клиенты</b><span>Open WebUI, Cherry Studio, Chatbox, LibreChat, SillyTavern, OpenAI SDK, Claude Code (через LiteLLM)</span></div>
+      </div>
+    </div>
+
+    <!-- Модели -->
+    <div class="card full">
+      <h2>Доступные модели (<span id="modelCount">0</span>) — клик копирует</h2>
+      <div class="models" id="modelList"></div>
+    </div>
+
+    <!-- Тест чата -->
+    <div class="card full">
+      <h2>Быстрый тест чата</h2>
+      <div class="row">
+        <select id="testModel"></select>
+        <input type="text" id="testMsg" placeholder="Сообщение, например: ответь одним словом — работает?" value="Reply with exactly one word: pong">
+        <button class="primary" id="sendBtn">Отправить</button>
+      </div>
+      <div class="testout" id="testOut">Ответ появится здесь.</div>
+    </div>
+  </div>
+
+  <footer>FreeQwenApi · дашборд · <a href="https://t.me/forgetmeai" target="_blank">t.me/forgetmeai</a></footer>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const origin = location.origin;
+const toast = (m) => { const t=$('#toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1600); };
+const copyText = async (txt) => { try{ await navigator.clipboard.writeText(txt); toast('Скопировано'); }catch{ toast('Не удалось скопировать'); } };
+
+$('#baseUrl').textContent = origin + '/api/v1';
+$('#baseUrlApi').textContent = origin + '/api';
+
+document.addEventListener('click', e => {
+  const b = e.target.closest('button.copy'); if(!b) return;
+  if(b.dataset.copyText) return copyText(b.dataset.copyText);
+  if(b.dataset.copy) return copyText($('#'+b.dataset.copy).textContent.trim());
+});
+
+async function loadHealth(){
+  try{
+    const r = await fetch(origin+'/api/health'); const j = await r.json();
+    $('#statusDot').className = 'dot on';
+    $('#statusText').textContent = 'онлайн · ' + (j.models||0) + ' моделей · ' + (j.accounts?.available??'?') + '/' + (j.accounts?.total??'?') + ' акк.';
+  }catch{
+    $('#statusDot').className='dot off'; $('#statusText').textContent='офлайн';
+  }
+}
+
+function fmtExp(ms){
+  if(!ms) return '';
+  const d = Math.round((ms - Date.now())/86400000);
+  return new Date(ms).toISOString().slice(0,10) + ' (' + (d>=0?('через '+d+' дн'):('истёк')) + ')';
+}
+
+async function loadAccounts(){
+  try{
+    const r = await fetch(origin+'/api/accounts'); const j = await r.json();
+    const list = $('#accList');
+    if(!j.accounts || !j.accounts.length){ list.innerHTML='<div class="hint">Нет аккаунтов. Добавьте токен ниже.</div>'; return; }
+    list.innerHTML = j.accounts.map(a => `
+      <div class="acc">
+        <span class="id">${a.id}</span>
+        <span class="badge ${a.status}">${a.status}</span>
+        <span class="meta">${fmtExp(a.exp)}</span>
+        <span class="spacer"></span>
+        <button class="danger copy-no" data-del="${a.id}">удалить</button>
+      </div>`).join('');
+  }catch{ $('#accList').innerHTML='<div class="hint err-text">Не удалось загрузить аккаунты</div>'; }
+}
+
+document.addEventListener('click', async e => {
+  const d = e.target.closest('button[data-del]'); if(!d) return;
+  if(!confirm('Удалить аккаунт '+d.dataset.del+'?')) return;
+  await fetch(origin+'/api/accounts/'+encodeURIComponent(d.dataset.del),{method:'DELETE'});
+  toast('Удалён'); loadAccounts(); loadHealth();
+});
+
+$('#addBtn').onclick = async () => {
+  const token = $('#newToken').value.trim();
+  if(!token){ toast('Вставьте токен'); return; }
+  const r = await fetch(origin+'/api/accounts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})});
+  const j = await r.json();
+  if(j.ok){ toast('Добавлен '+j.id); $('#newToken').value=''; loadAccounts(); loadHealth(); }
+  else { $('#addHint').innerHTML='<span class="err-text">'+(j.error||'Ошибка')+'</span>'; }
+};
+
+async function loadModels(){
+  try{
+    const r = await fetch(origin+'/api/models'); const j = await r.json();
+    const ids = (j.data||[]).map(m=>m.id);
+    $('#modelCount').textContent = ids.length;
+    $('#modelList').innerHTML = ids.map(id=>`<span class="chip" data-model="${id}">${id}</span>`).join('');
+    const sel = $('#testModel');
+    sel.innerHTML = ids.map(id=>`<option ${id==='qwen3.7-max'?'selected':''}>${id}</option>`).join('');
+  }catch{ $('#modelList').innerHTML='<div class="hint err-text">Не удалось загрузить модели</div>'; }
+}
+
+document.addEventListener('click', e => {
+  const c = e.target.closest('.chip[data-model]'); if(!c) return;
+  copyText(c.dataset.model);
+});
+
+$('#sendBtn').onclick = async () => {
+  const message = $('#testMsg').value.trim(); const model = $('#testModel').value;
+  if(!message) return;
+  const out = $('#testOut'); out.textContent='⏳ Отправка…'; $('#sendBtn').disabled=true;
+  const t0 = performance.now();
+  try{
+    const r = await fetch(origin+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message,model})});
+    const j = await r.json();
+    const dt = ((performance.now()-t0)/1000).toFixed(1);
+    const content = j?.choices?.[0]?.message?.content;
+    if(content) out.textContent = content + '\n\n— ' + model + ', ' + dt + ' c';
+    else out.innerHTML = '<span class="err-text">'+ (j.error||'Ошибка') +'</span>\n'+ (j.details? JSON.stringify(JSON.parse(j.details),null,2):'');
+  }catch(e){ out.innerHTML='<span class="err-text">Сеть недоступна: '+e.message+'</span>'; }
+  $('#sendBtn').disabled=false;
+};
+
+loadHealth(); loadAccounts(); loadModels();
+setInterval(loadHealth, 15000);
+</script>
+</body>
+</html>

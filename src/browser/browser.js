@@ -9,19 +9,28 @@ import { logInfo, logError, logWarn, logDebug } from '../logger/index.js';
 import {
     CHAT_PAGE_URL, NAVIGATION_TIMEOUT, RETRY_DELAY,
     VIEWPORT_WIDTH, VIEWPORT_HEIGHT, USER_AGENT,
-    SESSION_DIR, ACCOUNTS_DIR
+    SESSION_DIR, ACCOUNTS_DIR, BROWSER_CDP_URL
 } from '../config.js';
 
 puppeteer.use(StealthPlugin());
 
 let browserInstance = null;
 let browserContext = null;
+// true, когда мы подключились к внешнему Chrome по CDP (а не запустили свой).
+// В этом режиме нельзя вызывать browser.close() — это закроет браузер
+// пользователя. Используем browser.disconnect().
+let connectedMode = false;
 export let isAuthenticated = false;
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 export async function initBrowser(visibleMode = true, skipManualRestart = false) {
     if (browserInstance) return true;
+
+    // CDP-режим: подключаемся к уже запущенному Chrome пользователя.
+    if (BROWSER_CDP_URL) {
+        return await connectToExistingBrowser();
+    }
 
     logInfo('Инициализация браузера с Puppeteer Stealth...');
     try {
@@ -109,6 +118,43 @@ export async function initBrowser(visibleMode = true, skipManualRestart = false)
         return true;
     } catch (error) {
         logError('Ошибка при инициализации браузера', error);
+        return false;
+    }
+}
+
+async function connectToExistingBrowser() {
+    logInfo(`Подключение к внешнему Chrome по CDP: ${BROWSER_CDP_URL}`);
+    try {
+        // defaultViewport: null — используем реальный размер окна Chrome,
+        // не навязываем свой viewport настоящему браузеру пользователя.
+        browserInstance = await puppeteer.connect({
+            browserURL: BROWSER_CDP_URL,
+            defaultViewport: null
+        });
+        connectedMode = true;
+
+        // Берём уже открытую вкладку Qwen, иначе создаём новую — чтобы не
+        // перехватывать активную вкладку пользователя.
+        const pages = await browserInstance.pages();
+        let page = pages.find(p => {
+            try { return p.url().includes('qwen'); } catch { return false; }
+        });
+        if (!page) {
+            page = await browserInstance.newPage();
+            await page.goto(CHAT_PAGE_URL, { waitUntil: 'domcontentloaded', timeout: NAVIGATION_TIMEOUT });
+        }
+
+        browserContext = page;
+        // Доверяем сессии пользователя: он залогинен в своём Chrome. Это
+        // отключает консольный ENTER-флоу; токен извлекается из localStorage.
+        setAuthenticationStatus(true);
+        logInfo('Подключение установлено. Используется ваша сессия Chrome.');
+        return true;
+    } catch (error) {
+        logError(`Не удалось подключиться к Chrome (${BROWSER_CDP_URL}). Запущен ли он с --remote-debugging-port?`, error);
+        browserInstance = null;
+        browserContext = null;
+        connectedMode = false;
         return false;
     }
 }
@@ -201,6 +247,10 @@ async function startManualAuthenticationPuppeteer(page, skipManualRestart) {
 }
 
 export async function restartBrowserInHeadlessMode() {
+    if (connectedMode) {
+        logInfo('CDP-режим: перезапуск в фоновом режиме не требуется.');
+        return;
+    }
     logInfo('Перезапуск браузера в фоновом режиме...');
     const token = getAuthToken();
     if (token) { logDebug('Сохранение токена...'); saveAuthToken(token); await delay(1000); }
@@ -214,15 +264,23 @@ export async function shutdownBrowser() {
     try {
         try { await clearPagePool(); } catch (e) { logError('Ошибка при очистке пула страниц', e); }
         if (browserInstance) {
-            try {
-                const pages = await browserInstance.pages();
-                for (const page of pages) await page.close().catch(() => {});
-                await browserInstance.close();
-            } catch (e) { logError('Ошибка при закрытии браузера', e); }
+            if (connectedMode) {
+                // CDP: отключаемся, НЕ закрывая Chrome пользователя и его вкладки.
+                try { await browserInstance.disconnect(); }
+                catch (e) { logError('Ошибка при отключении от Chrome', e); }
+                logInfo('Отключение от внешнего Chrome (браузер не закрыт)');
+            } else {
+                try {
+                    const pages = await browserInstance.pages();
+                    for (const page of pages) await page.close().catch(() => {});
+                    await browserInstance.close();
+                    logInfo('Браузер закрыт');
+                } catch (e) { logError('Ошибка при закрытии браузера', e); }
+            }
         }
         browserContext = null;
         browserInstance = null;
-        logInfo('Браузер закрыт');
+        connectedMode = false;
     } catch (error) {
         logError('Ошибка при завершении работы браузера', error);
     }

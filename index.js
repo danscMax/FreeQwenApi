@@ -1,5 +1,7 @@
 import express from 'express';
 import bodyParser from 'body-parser';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 import { initBrowser, shutdownBrowser } from './src/browser/browser.js';
 import apiRoutes from './src/api/routes.js';
@@ -9,9 +11,10 @@ import { addAccountInteractive } from './src/utils/accountSetup.js';
 import { logHttpRequest, logInfo, logError, logWarn } from './src/logger/index.js';
 import { prompt } from './src/utils/prompt.js';
 import { FORGETMEAI_WATERMARK } from './src/utils/branding.js';
-import { PORT, HOST } from './src/config.js';
+import { PORT, HOST, BROWSER_CDP_URL } from './src/config.js';
 
 const app = express();
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const port = Number.parseInt(process.env.PORT ?? PORT, 10);
 const host = process.env.HOST || HOST;
@@ -28,6 +31,10 @@ function toBoolean(value) {
 const skipAccountMenu = toBoolean(process.env.SKIP_ACCOUNT_MENU) || toBoolean(process.env.NON_INTERACTIVE);
 
 function ensureNonInteractiveTokens() {
+    if (BROWSER_CDP_URL) {
+        logInfo('CDP-режим: токен будет получен из подключённого Chrome.');
+        return;
+    }
     const tokens = loadTokens();
     if (!tokens.length) {
         logError('Не найдено ни одного аккаунта. Запустите скрипт авторизации перед запуском сервера.');
@@ -66,6 +73,10 @@ app.use((req, res, next) => {
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
     if (req.method === 'OPTIONS') return res.sendStatus(200);
     next();
+});
+
+app.get(['/', '/dashboard'], (req, res) => {
+    res.sendFile(path.join(__dirname, 'src', 'dashboard', 'index.html'));
 });
 
 app.use('/api', apiRoutes);
@@ -141,6 +152,7 @@ async function startServer() {
                 const { reloginAccountInteractive } = await import('./src/utils/accountSetup.js');
                 await reloginAccountInteractive();
             } else if (choice === '3') {
+                if (BROWSER_CDP_URL) break; // токен придёт из подключённого Chrome
                 const hasValidToken = tokens.some(t => {
                     if (t.invalid) return false;
                     if (!t.resetAt) return true;

@@ -2,7 +2,7 @@ import express from 'express';
 import { sendMessage, getAllModels, getApiKeys, createChatV2, pollQwenTaskStatus, extractMediaUrl, pagePool, extractAuthToken } from './chat.js';
 import { getAuthenticationStatus, getBrowserContext } from '../browser/browser.js';
 import { checkAuthentication } from '../browser/auth.js';
-import { logInfo, logError, logDebug } from '../logger/index.js';
+import { logInfo, logError, logDebug, logWarn } from '../logger/index.js';
 import { getMappedModel } from './modelMapping.js';
 import { getStsToken, uploadFileToQwen } from './fileUpload.js';
 import { loadHistory, saveHistory } from './chatHistory.js';
@@ -12,7 +12,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
-import { listTokens, markInvalid, markRateLimited, markValid } from './tokenManager.js';
+import { listTokens, markInvalid, markRateLimited, markValid, addTokenFromString, deleteAccount, decodeTokenInfo } from './tokenManager.js';
 import { FORGETMEAI_WATERMARK } from '../utils/branding.js';
 
 // Функция для генерирования детерминированного chatId на основе истории
@@ -988,6 +988,82 @@ router.get('/status', async (req, res) => {
         res.json({ authenticated: isAuthenticated, message: isAuthenticated ? 'Авторизация активна' : 'Требуется авторизация', accounts });
     } catch (error) {
         logError('Ошибка при проверке статуса авторизации', error);
+        res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+    }
+});
+
+// ─── Управление аккаунтами (для дашборда) ──────────────────────────────────
+// Управление аккаунтами чувствительно (токены), поэтому доступно только с
+// localhost — защита от доступа из LAN (HOST=0.0.0.0 слушает на всех интерфейсах).
+function localOnly(req, res, next) {
+    const ip = req.socket?.remoteAddress || '';
+    if (ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1') return next();
+    logWarn(`Отклонён не-локальный доступ к /accounts с ${ip}`);
+    return res.status(403).json({ error: 'Управление аккаунтами доступно только с localhost' });
+}
+
+// CSRF-защита для мутирующих запросов: ACAO:* разрешает cross-origin вызовы,
+// поэтому запрещаем запросы, чей Origin не совпадает с хостом сервера.
+function sameOriginOnly(req, res, next) {
+    const origin = req.get('origin');
+    if (origin) {
+        try {
+            if (new URL(origin).host !== req.get('host')) {
+                return res.status(403).json({ error: 'Cross-origin запрос запрещён' });
+            }
+        } catch {
+            return res.status(403).json({ error: 'Некорректный Origin' });
+        }
+    }
+    return next();
+}
+
+router.get('/accounts', localOnly, (req, res) => {
+    try {
+        const now = Date.now();
+        const accounts = listTokens().map(t => {
+            const info = decodeTokenInfo(t.token);
+            let status = 'OK';
+            if (t.invalid) status = 'INVALID';
+            else if (t.resetAt && new Date(t.resetAt).getTime() > now) status = 'WAIT';
+            else if (info.exp && info.exp < now) status = 'EXPIRED';
+            return {
+                id: t.id,
+                status,
+                exp: info.exp,
+                resetAt: t.resetAt || null,
+                preview: String(t.token).slice(0, 10) + '…' + String(t.token).slice(-4)
+            };
+        });
+        res.json({ accounts });
+    } catch (error) {
+        logError('Ошибка при получении списка аккаунтов', error);
+        res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+    }
+});
+
+router.post('/accounts', localOnly, sameOriginOnly, (req, res) => {
+    try {
+        const token = req.body?.token;
+        if (!token) return res.status(400).json({ error: 'Не передан token' });
+        const result = addTokenFromString(token);
+        if (result.error) return res.status(400).json(result);
+        logInfo(`Добавлен аккаунт через дашборд: ${result.id}`);
+        res.json({ ok: true, id: result.id });
+    } catch (error) {
+        logError('Ошибка при добавлении аккаунта', error);
+        res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+    }
+});
+
+router.delete('/accounts/:id', localOnly, sameOriginOnly, (req, res) => {
+    try {
+        const result = deleteAccount(req.params.id);
+        if (result.error) return res.status(400).json(result);
+        logInfo(`Удалён аккаунт через дашборд: ${req.params.id}`);
+        res.json({ ok: true });
+    } catch (error) {
+        logError('Ошибка при удалении аккаунта', error);
         res.status(500).json({ error: 'Внутренняя ошибка сервера' });
     }
 });
