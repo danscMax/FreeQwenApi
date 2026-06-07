@@ -85,6 +85,37 @@ export function markValid(id, newToken) {
     }
 }
 
+// Обновляет токен существующего аккаунта (relogin из дашборда):
+// markValid (обновляет token + сбрасывает invalid/resetAt) + перезапись token.txt.
+export function updateAccountToken(id, rawToken) {
+    if (typeof id !== 'string' || !/^acc_[a-zA-Z0-9]+$/.test(id)) {
+        return { error: 'Некорректный id аккаунта' };
+    }
+    const token = String(rawToken || '').trim();
+    if (!token.startsWith('eyJ') || token.split('.').length !== 3) {
+        return { error: 'Невалидный токен: ожидается JWT (eyJ...)' };
+    }
+    const tokens = loadTokens();
+    const acc = tokens.find(t => t.id === id);
+    if (!acc) return { error: 'Аккаунт не найден' };
+    if (tokens.some(t => t.id !== id && t.token === token)) {
+        return { error: 'Этот токен уже используется другим аккаунтом' };
+    }
+    const dir = path.join(ACCOUNTS_PATH, id);
+    if (!path.resolve(dir).startsWith(path.resolve(ACCOUNTS_PATH) + path.sep)) {
+        return { error: 'Недопустимый путь аккаунта' };
+    }
+    markValid(id, token);
+    try {
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, 'token.txt'), token, 'utf8');
+    } catch (e) {
+        logError('TokenManager: не удалось записать token.txt для ' + id, e);
+    }
+    const info = decodeTokenInfo(token);
+    return { ok: true, id, exp: info.exp };
+}
+
 export function listTokens() {
     return loadTokens();
 }

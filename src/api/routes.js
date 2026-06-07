@@ -12,7 +12,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
-import { listTokens, markInvalid, markRateLimited, markValid, addTokenFromString, deleteAccount, decodeTokenInfo } from './tokenManager.js';
+import { listTokens, markInvalid, markRateLimited, markValid, addTokenFromString, deleteAccount, decodeTokenInfo, updateAccountToken } from './tokenManager.js';
 import { FORGETMEAI_WATERMARK } from '../utils/branding.js';
 
 // Функция для генерирования детерминированного chatId на основе истории
@@ -954,6 +954,68 @@ router.get('/models', async (req, res) => {
     }
 });
 
+// Прокси скачивания внешних медиа (картинки/видео/файлы Qwen CDN).
+// Нужен, т.к. fetch-blob с фронта к CDN блокируется CORS. Строгий whitelist + SSRF-guard.
+const DOWNLOAD_HOSTS = ['qwenlm.ai', 'aliyuncs.com', 'alicdn.com', 'aliyun.com'];
+// Валидация URL для прокси: только https, без IP-литералов/localhost, hostname в whitelist
+// доверенных CDN Qwen/Aliyun (эти домены не контролируются третьими лицами, поэтому
+// DNS-rebinding на них неприменим). Возвращает URL или null.
+function validateDownloadUrl(raw) {
+    let u;
+    try { u = new URL(String(raw)); } catch { return null; }
+    if (u.protocol !== 'https:') return null;
+    const host = u.hostname.toLowerCase();
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.includes(':') || host === 'localhost') return null;
+    if (!DOWNLOAD_HOSTS.some(d => host === d || host.endsWith('.' + d))) return null;
+    return u;
+}
+router.get('/download', async (req, res) => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 60_000);
+    try {
+        if (!req.query.url) { clearTimeout(timer); return res.status(400).json({ error: 'Параметр url обязателен' }); }
+        let u = validateDownloadUrl(req.query.url);
+        if (!u) { clearTimeout(timer); return res.status(403).json({ error: 'URL не разрешён (только https и домены Qwen/Aliyun CDN)' }); }
+
+        // Редиректы не следуем автоматически — каждый hop валидируем заново (защита от SSRF через redirect).
+        let upstream, hops = 0;
+        for (;;) {
+            upstream = await fetch(u.toString(), { redirect: 'manual', signal: ctrl.signal });
+            if (upstream.status >= 300 && upstream.status < 400) {
+                const loc = upstream.headers.get('location');
+                let next = null;
+                if (loc) { try { next = validateDownloadUrl(new URL(loc, u).toString()); } catch { next = null; } }
+                if (!loc || ++hops > 3) { clearTimeout(timer); return res.status(502).json({ error: 'Недопустимая цепочка редиректов' }); }
+                if (!next) { clearTimeout(timer); return res.status(403).json({ error: 'Редирект на недопустимый адрес' }); }
+                u = next; continue;
+            }
+            break;
+        }
+        if (!upstream.ok || !upstream.body) { clearTimeout(timer); return res.status(502).json({ error: `Источник вернул ${upstream.status}` }); }
+
+        const name = String(req.query.name || u.pathname.split('/').pop() || 'download')
+            .replace(/[^\w.\-]+/g, '_').slice(0, 120) || 'download';
+        res.setHeader('Content-Disposition', `attachment; filename="${name}"`);
+        const ct = upstream.headers.get('content-type'); if (ct) res.setHeader('Content-Type', ct);
+        const len = upstream.headers.get('content-length'); if (len) res.setHeader('Content-Length', len);
+
+        const reader = upstream.body.getReader();
+        res.on('close', () => { reader.cancel().catch(() => {}); });
+        for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            if (!res.write(Buffer.from(value))) await new Promise(r => res.once('drain', r));
+        }
+        clearTimeout(timer);
+        res.end();
+    } catch (error) {
+        clearTimeout(timer);
+        logError('Ошибка проксирования скачивания', error);
+        if (!res.headersSent) res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+        else try { res.end(); } catch { /* noop */ }
+    }
+});
+
 router.get('/status', async (req, res) => {
     try {
         logInfo('Запрос статуса авторизации');
@@ -1064,6 +1126,41 @@ router.delete('/accounts/:id', localOnly, sameOriginOnly, (req, res) => {
         res.json({ ok: true });
     } catch (error) {
         logError('Ошибка при удалении аккаунта', error);
+        res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+    }
+});
+
+// Проверить валидность одного аккаунта (реальный запрос к Qwen).
+// POST, т.к. меняет состояние (mark*); за sameOriginOnly — защита от CSRF.
+router.post('/accounts/:id/check', localOnly, sameOriginOnly, async (req, res) => {
+    try {
+        const id = req.params.id;
+        if (!/^acc_[a-zA-Z0-9]+$/.test(id)) return res.status(400).json({ error: 'Некорректный id аккаунта' });
+        const t = listTokens().find(x => x.id === id);
+        if (!t) return res.status(404).json({ error: 'Аккаунт не найден' });
+        const info = decodeTokenInfo(t.token);
+        const r = await testToken(t.token);
+        let status = 'ERROR';
+        if (r === 'OK') { status = 'OK'; if (t.invalid || t.resetAt) markValid(t.id); }
+        else if (r === 'RATELIMIT') { status = 'WAIT'; markRateLimited(t.id, 24); }
+        else if (r === 'UNAUTHORIZED') { status = 'INVALID'; if (!t.invalid) markInvalid(t.id); }
+        const resetAt = status === 'WAIT' ? new Date(Date.now() + 24 * 3600 * 1000).toISOString() : (t.resetAt || null);
+        res.json({ id, status, exp: info.exp, resetAt });
+    } catch (error) {
+        logError('Ошибка проверки аккаунта', error);
+        res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+    }
+});
+
+// Обновить токен аккаунта (relogin вручную из дашборда).
+router.post('/accounts/:id/update', localOnly, sameOriginOnly, (req, res) => {
+    try {
+        const result = updateAccountToken(req.params.id, req.body?.token);
+        if (result.error) return res.status(400).json(result);
+        logInfo(`Обновлён токен аккаунта через дашборд: ${req.params.id}`);
+        res.json(result);
+    } catch (error) {
+        logError('Ошибка обновления токена аккаунта', error);
         res.status(500).json({ error: 'Внутренняя ошибка сервера' });
     }
 });

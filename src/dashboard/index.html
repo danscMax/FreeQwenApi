@@ -4,249 +4,572 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FreeQwenApi — Дашборд</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2358a6ff' stroke-width='2' stroke-linejoin='round'%3E%3Cpath d='M12 2 4 6.5v9L12 22l8-6.5v-9L12 2Z'/%3E%3Cpath d='m12 7-4 2.3v4.4L12 16l4-2.3V9.3L12 7Z'/%3E%3C/svg%3E">
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js" integrity="sha384-/TQbtLCAerC3jgaim+N78RZSDYV7ryeoBCVqTuzRrFec2akfBkHS7ACQ3PQhvMVi" crossorigin="anonymous" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js" integrity="sha384-XQqX/4yiUGu+oyr87jvWzRuqBUK/adrY0DunhL+tID9m/9dwSpV8h9Fk/Sg6ifVQ" crossorigin="anonymous" defer></script>
 <style>
   :root{
-    --bg:#0d1117; --card:#161b22; --card2:#1c2230; --border:#30363d;
-    --text:#e6edf3; --muted:#8b949e; --accent:#58a6ff; --accent2:#388bfd;
-    --ok:#3fb950; --warn:#d29922; --err:#f85149; --mono:ui-monospace,SFMono-Regular,Consolas,monospace;
+    --bg:#0d1117; --bg2:#010409; --card:#161b22; --card2:#1c2230; --elev:#21262d;
+    --border:#2a2f37; --border2:#3d444d;
+    --text:#e6edf3; --muted:#9198a1; --faint:#6e7681;
+    --accent:#58a6ff; --accent-press:#1f6feb; --accent-deep:#1158c7;
+    --ok:#3fb950; --warn:#d29922; --err:#f85149;
+    --mono:ui-monospace,SFMono-Regular,Consolas,monospace;
+    --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:22px; --s6:30px;
+    --r:8px; --r2:12px;
+    --fs-xs:12px; --fs-sm:13px; --fs-md:14px; --fs-lg:16px; --fs-xl:20px; --fs-hero:28px;
+    --shadow:0 1px 2px rgba(0,0,0,.3);
   }
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.5}
-  .wrap{max-width:1080px;margin:0 auto;padding:24px 20px 60px}
-  header{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:8px}
-  h1{font-size:22px;margin:0;display:flex;align-items:center;gap:10px}
-  h1 .logo{color:var(--accent)}
-  .sub{color:var(--muted);font-size:13px;margin-bottom:24px}
-  .status-pill{display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border-radius:999px;border:1px solid var(--border);background:var(--card);font-size:13px;font-weight:600}
-  .dot{width:9px;height:9px;border-radius:50%;background:var(--muted)}
-  .dot.on{background:var(--ok);box-shadow:0 0 8px var(--ok)}
-  .dot.off{background:var(--err);box-shadow:0 0 8px var(--err)}
-  .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  html{scrollbar-color:var(--border2) transparent}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.5;font-size:var(--fs-sm)}
+  .wrap{max-width:1080px;margin:0 auto;padding:var(--s4) var(--s5) var(--s6)}
+  a{color:var(--accent);text-decoration:none}
+  svg.ic{width:1em;height:1em;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+
+  header{position:sticky;top:0;z-index:20;background:rgba(13,17,23,.85);backdrop-filter:blur(10px);
+    display:flex;align-items:center;justify-content:space-between;gap:var(--s4);flex-wrap:wrap;padding:var(--s3) 0;border-bottom:1px solid var(--border)}
+  h1{font-size:var(--fs-xl);margin:0;display:flex;align-items:center;gap:var(--s2);font-weight:700;letter-spacing:-.01em}
+  h1 .logo{width:24px;height:24px;color:var(--accent)}
+  .status-pill{display:inline-flex;align-items:center;gap:var(--s2);padding:6px 13px;border-radius:6px;border:1px solid var(--border);background:var(--card);font-size:var(--fs-sm);font-weight:600}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--faint)}
+  .dot.on{background:var(--ok);box-shadow:0 0 0 3px rgba(63,185,80,.16)}
+  .dot.off{background:var(--err);box-shadow:0 0 0 3px rgba(248,81,73,.16)}
+
+  .tabs{display:flex;gap:2px;overflow-x:auto;margin:var(--s4) 0 var(--s5);border-bottom:1px solid var(--border)}
+  .tab{font-family:inherit;cursor:pointer;background:none;border:none;border-bottom:2px solid transparent;color:var(--muted);
+    padding:10px 15px;font-size:var(--fs-md);font-weight:600;white-space:nowrap;display:inline-flex;align-items:center;gap:7px;transition:color .15s,border-color .15s}
+  .tab svg.ic{font-size:16px}
+  .tab:hover{color:var(--text)}
+  .tab[aria-selected="true"]{color:var(--text);border-bottom-color:var(--accent)}
+  .panel{display:none}
+  .panel.active{display:block;animation:fade .18s ease}
+  @keyframes fade{from{opacity:0}to{opacity:1}}
+
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--s4)}
   @media(max-width:760px){.grid{grid-template-columns:1fr}}
-  .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px 18px}
-  .card h2{font-size:14px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:0 0 14px}
-  .row{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:var(--r2);padding:var(--s5);box-shadow:var(--shadow)}
+  .full{grid-column:1/-1}
+  .card h2{font-size:var(--fs-md);color:var(--text);margin:0 0 var(--s4);display:flex;align-items:center;gap:var(--s2);font-weight:600}
+  .card h2 svg.ic{font-size:17px;color:var(--accent)}
+  .card h2 .spacer{flex:1}
+
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--s3);margin-bottom:var(--s4)}
+  @media(max-width:760px){.kpis{grid-template-columns:repeat(2,1fr)}}
+  .kpi{background:var(--card);border:1px solid var(--border);border-radius:var(--r2);padding:var(--s4);box-shadow:var(--shadow)}
+  .kpi .num{font-size:var(--fs-hero);font-weight:700;letter-spacing:-.02em;line-height:1.1}
+  .kpi .lbl{color:var(--muted);font-size:var(--fs-xs);margin-top:2px;display:flex;align-items:center;gap:6px}
+  .kpi .num.ok{color:var(--ok)} .kpi .num.warn{color:var(--warn)} .kpi .num.err{color:var(--err)}
+
+  .row{display:flex;align-items:center;gap:var(--s2);margin-bottom:var(--s2)}
   .row:last-child{margin-bottom:0}
-  label.k{width:96px;color:var(--muted);font-size:13px;flex-shrink:0}
-  .val{flex:1;font-family:var(--mono);font-size:13px;background:var(--card2);border:1px solid var(--border);border-radius:7px;padding:8px 10px;overflow:auto;white-space:nowrap}
-  button{font-family:inherit;cursor:pointer;border-radius:7px;border:1px solid var(--border);background:var(--card2);color:var(--text);padding:8px 12px;font-size:13px;transition:.15s}
+  label.k{width:92px;color:var(--muted);font-size:var(--fs-sm);flex-shrink:0}
+  .val{flex:1;font-family:var(--mono);font-size:var(--fs-sm);background:var(--elev);border:1px solid var(--border2);border-radius:6px;padding:8px 10px;overflow:auto;white-space:nowrap;color:var(--text)}
+
+  button{font-family:inherit;cursor:pointer;border-radius:6px;border:1px solid var(--border2);background:var(--elev);color:var(--text);padding:8px 12px;font-size:var(--fs-sm);font-weight:500;display:inline-flex;align-items:center;gap:6px;transition:background .15s,border-color .15s,color .15s}
   button:hover{border-color:var(--accent);color:var(--accent)}
-  button.primary{background:var(--accent2);border-color:var(--accent2);color:#fff;font-weight:600}
+  button:active{transform:translateY(1px)}
+  button:disabled{opacity:.5;cursor:default;transform:none}
+  button.primary{background:var(--accent-press);border-color:var(--accent-deep);color:#fff;font-weight:600}
   button.primary:hover{background:var(--accent);color:#fff}
   button.danger:hover{border-color:var(--err);color:var(--err)}
-  button.copy{padding:6px 10px;font-size:12px;flex-shrink:0}
-  .hint{color:var(--muted);font-size:12.5px;margin-top:12px}
-  .hint code{font-family:var(--mono);background:var(--card2);padding:1px 5px;border-radius:4px;color:var(--accent)}
-  .acc{display:flex;align-items:center;gap:10px;padding:9px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;background:var(--card2)}
-  .acc .id{font-weight:600;font-size:13px}
-  .acc .meta{color:var(--muted);font-size:12px;font-family:var(--mono)}
-  .badge{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;text-transform:uppercase;letter-spacing:.03em}
-  .badge.OK{background:rgba(63,185,80,.15);color:var(--ok)}
-  .badge.WAIT{background:rgba(210,153,34,.15);color:var(--warn)}
-  .badge.INVALID,.badge.EXPIRED{background:rgba(248,81,73,.15);color:var(--err)}
+  button.sm{padding:5px 9px;font-size:var(--fs-xs)}
+  button svg.ic{font-size:15px}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+  .tab:focus-visible{outline:2px solid var(--accent);outline-offset:-3px;border-radius:0}
+
+  .hint{color:var(--muted);font-size:var(--fs-xs);margin-top:var(--s3);line-height:1.55}
+  .hint code,.feat code{font-family:var(--mono);background:var(--bg2);padding:1px 5px;border-radius:4px;color:var(--accent)}
+  .onboard{background:rgba(88,166,255,.06);border:1px solid var(--accent-deep);border-radius:var(--r);padding:var(--s4);margin-bottom:var(--s3)}
+  .onboard b{color:var(--text)}
+
+  textarea,input[type=text]{width:100%;font-family:inherit;font-size:var(--fs-md);background:var(--elev);border:1px solid var(--border2);border-radius:6px;padding:9px 11px;color:var(--text);resize:vertical}
+  textarea:focus,input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(88,166,255,.14)}
+  select{font-family:inherit;font-size:var(--fs-sm);background:var(--elev);border:1px solid var(--border2);border-radius:6px;padding:8px 10px;color:var(--text);cursor:pointer}
+
+  .models{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;max-height:240px;overflow:auto;padding-right:4px}
+  .chip{font-family:var(--mono);font-size:var(--fs-xs);background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:7px 10px;cursor:pointer;transition:.12s;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
+  .chip:hover{border-color:var(--accent);color:var(--accent);background:var(--elev)}
+
+  /* accounts — прямые полосы статуса */
+  .accbar{display:flex;align-items:center;gap:var(--s2);margin-bottom:var(--s3)}
+  .acc{display:flex;align-items:center;gap:var(--s3);padding:10px 12px;background:var(--card2);
+    border:1px solid var(--border);border-left:3px solid var(--faint);border-radius:0 var(--r) var(--r) 0;margin-bottom:6px;flex-wrap:wrap}
+  .acc.OK{border-left-color:var(--ok)} .acc.WAIT{border-left-color:var(--warn)}
+  .acc.INVALID,.acc.EXPIRED,.acc.ERROR{border-left-color:var(--err)}
+  .acc .id{font-weight:600;font-size:var(--fs-sm)}
+  .acc .meta{color:var(--muted);font-size:var(--fs-xs);font-family:var(--mono)}
+  .badge{font-size:var(--fs-xs);font-weight:700;padding:3px 9px;border-radius:4px;display:inline-flex;align-items:center;gap:5px}
+  .badge::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+  .badge.OK{background:rgba(63,185,80,.16);color:#56d364} .badge.WAIT{background:rgba(210,153,34,.18);color:#e3b341}
+  .badge.INVALID,.badge.EXPIRED,.badge.ERROR{background:rgba(248,81,73,.2);color:#ff7b72}
+  .badge.checking{background:rgba(88,166,255,.16);color:var(--accent)}
   .spacer{flex:1}
-  textarea,input[type=text]{width:100%;font-family:inherit;font-size:13px;background:var(--card2);border:1px solid var(--border);border-radius:7px;padding:9px 10px;color:var(--text);resize:vertical}
-  textarea:focus,input:focus{outline:none;border-color:var(--accent)}
-  select{font-family:inherit;font-size:13px;background:var(--card2);border:1px solid var(--border);border-radius:7px;padding:8px 10px;color:var(--text)}
-  .models{display:flex;flex-wrap:wrap;gap:7px;max-height:200px;overflow:auto}
-  .chip{font-family:var(--mono);font-size:12px;background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:5px 9px;cursor:pointer}
-  .chip:hover{border-color:var(--accent);color:var(--accent)}
-  .full{grid-column:1/-1}
-  .feat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-  @media(max-width:760px){.feat-grid{grid-template-columns:1fr}}
-  .feat{background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:11px 12px;display:flex;flex-direction:column;gap:4px}
-  .feat b{font-size:13.5px}
-  .feat span{color:var(--muted);font-size:12.5px}
-  .feat code{font-family:var(--mono);color:var(--accent);font-size:11.5px}
-  .testout{margin-top:12px;background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:13.5px;min-height:42px;white-space:pre-wrap}
-  .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--ok);color:#04150a;font-weight:600;padding:10px 18px;border-radius:8px;opacity:0;transition:.25s;pointer-events:none;font-size:13px}
-  .toast.show{opacity:1}
-  footer{margin-top:28px;text-align:center;color:var(--muted);font-size:12px}
-  a{color:var(--accent);text-decoration:none}
-  .err-text{color:var(--err)}
+  .relogin-box{display:flex;gap:var(--s2);margin:0 0 6px;padding:0 12px}
+
+  /* chat */
+  .chatbox{display:flex;flex-direction:column;height:64vh;min-height:420px}
+  .msgs{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:var(--s3);padding:var(--s1) var(--s1) var(--s3)}
+  .bubble{max-width:82%;padding:9px 13px;border-radius:12px;font-size:var(--fs-md);word-break:break-word}
+  .bubble.user{align-self:flex-end;background:var(--accent-press);color:#fff;border-bottom-right-radius:3px;white-space:pre-wrap}
+  .bubble.assistant{align-self:flex-start;background:var(--elev);border:1px solid var(--border);border-bottom-left-radius:3px}
+  .bubble.assistant.plain{white-space:pre-wrap}
+  .bubble.err{border-color:var(--err);color:#ff7b72;white-space:pre-wrap}
+  .bubble .role{font-size:10px;text-transform:uppercase;letter-spacing:.06em;opacity:.65;margin-bottom:4px;font-weight:700}
+  .bubble.streaming::after{content:"▍";animation:blink 1s steps(2) infinite;color:var(--accent)}
+  @keyframes blink{50%{opacity:0}}
+  /* markdown внутри ответа */
+  .md>*:first-child{margin-top:0}.md>*:last-child{margin-bottom:0}
+  .md p{margin:.5em 0}.md ul,.md ol{margin:.5em 0;padding-left:1.4em}.md li{margin:.2em 0}
+  .md code{font-family:var(--mono);font-size:.9em;background:var(--bg2);padding:1px 5px;border-radius:4px}
+  .md pre{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;overflow:auto;margin:.6em 0}
+  .md pre code{background:none;padding:0}
+  .md a{color:var(--accent);text-decoration:underline}
+  .md blockquote{border-left:3px solid var(--border2);margin:.5em 0;padding:.1em 0 .1em 12px;color:var(--muted)}
+  .md table{border-collapse:collapse;margin:.6em 0}.md th,.md td{border:1px solid var(--border);padding:5px 9px}
+  .md h1,.md h2,.md h3{margin:.7em 0 .3em;line-height:1.25}
+
+  .attachments{display:flex;flex-wrap:wrap;gap:6px;margin-top:var(--s2)}
+  .att{display:inline-flex;align-items:center;gap:6px;background:var(--elev);border:1px solid var(--border2);border-radius:6px;padding:4px 8px;font-size:var(--fs-xs)}
+  .att .x{cursor:pointer;color:var(--faint)} .att .x:hover{color:var(--err)}
+  .att.up{opacity:.6}
+  .msg-atts{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+  .msg-atts img{max-width:160px;max-height:160px;border-radius:6px;border:1px solid rgba(255,255,255,.2)}
+  .msg-atts a{font-size:var(--fs-xs);color:#cfe3ff;text-decoration:underline}
+  .chat-input{display:flex;gap:var(--s2);margin-top:var(--s3);align-items:flex-end}
+  .chat-input textarea{min-height:48px;max-height:170px;font-size:16px}
+  .empty{color:var(--muted);font-size:var(--fs-sm);text-align:center;margin:auto;padding:var(--s6);max-width:430px}
+  .empty svg.ic{font-size:28px;color:var(--faint);display:block;margin:0 auto var(--s3)}
+
+  .media-controls{display:flex;gap:var(--s2);flex-wrap:wrap;align-items:center;margin-bottom:var(--s3)}
+  .media-out{min-height:60px}
+  .media-out img,.media-out video{max-width:100%;border-radius:var(--r);border:1px solid var(--border);display:block}
+  .media-actions{display:flex;gap:var(--s3);margin-top:var(--s2);font-size:var(--fs-xs)}
+  .gallery{display:flex;flex-wrap:wrap;gap:var(--s3);margin-top:var(--s4)}
+  .gthumb{position:relative}
+  .gthumb img{width:116px;height:116px;object-fit:cover;border-radius:var(--r);border:1px solid var(--border);cursor:pointer;transition:.15s;display:block}
+  .gthumb img:hover{border-color:var(--accent)}
+  .gthumb .dl{position:absolute;right:5px;bottom:5px;background:rgba(0,0,0,.6);border-radius:4px;padding:2px 4px;font-size:11px;color:#fff}
+  .spinner{width:16px;height:16px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;display:inline-block;animation:spin .7s linear infinite;vertical-align:middle}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .statusline{display:flex;align-items:center;gap:var(--s2);color:var(--muted);font-size:var(--fs-sm);margin:var(--s3) 0}
+
+  .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(8px);background:var(--elev);border:1px solid var(--border2);color:var(--text);font-weight:600;padding:11px 18px;border-radius:8px;opacity:0;transition:.25s;pointer-events:none;font-size:var(--fs-sm);z-index:50;box-shadow:0 6px 22px rgba(0,0,0,.4);display:flex;align-items:center;gap:8px}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast.ok{border-color:var(--ok)} .toast.ok svg{color:var(--ok)}
+  .toast.err{border-color:var(--err)} .toast.err svg{color:var(--err)}
+  .err-text{color:#ff7b72}
+  footer{margin-top:var(--s6);text-align:center;color:var(--faint);font-size:var(--fs-xs)}
+  @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
 <body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-logo" viewBox="0 0 24 24"><path d="M12 2 4 6.5v9L12 22l8-6.5v-9L12 2Z"/><path d="m12 7-4 2.3v4.4L12 16l4-2.3V9.3L12 7Z"/></symbol>
+  <symbol id="i-overview" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+  <symbol id="i-accounts" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.5 7.2L4 21l1.8-5.5A8 8 0 1 1 21 12Z"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.7"/><path d="m4 18 5-5 4 4 3-3 4 4"/></symbol>
+  <symbol id="i-video" viewBox="0 0 24 24"><rect x="3" y="5" width="13" height="14" rx="2"/><path d="m16 9 5-3v12l-5-3"/></symbol>
+  <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 2v6M15 2v6"/><path d="M7 8h10v3a5 5 0 0 1-10 0Z"/><path d="M12 16v6"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m20 6-11 11-5-5"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="8" r="5"/><path d="m11.5 11.5 8.5 8.5M16 16l3-3M18 18l2-2"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4Z"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v5h-5"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></symbol>
+  <symbol id="i-clip" viewBox="0 0 24 24"><path d="M21 11.5 12.5 20a5 5 0 0 1-7-7l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7L10 12.7"/></symbol>
+  <symbol id="i-dl" viewBox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 21h16"/></symbol>
+</svg>
+
 <div class="wrap">
   <header>
-    <h1><span class="logo">◆</span> FreeQwenApi</h1>
-    <span class="status-pill"><span class="dot" id="statusDot"></span><span id="statusText">проверка…</span></span>
+    <h1><svg class="ic logo"><use href="#i-logo"/></svg> FreeQwenApi</h1>
+    <span class="status-pill"><span class="dot" id="statusDot"></span><span id="statusText" role="status" aria-live="polite">проверка…</span></span>
   </header>
-  <div class="sub">Локальный OpenAI-совместимый прокси к Qwen Chat. Подставьте Base URL и любой ключ в любой клиент, который умеет OpenAI API.</div>
 
-  <div class="grid">
-    <!-- Подключение -->
-    <div class="card">
-      <h2>Как подключить</h2>
-      <div class="row">
-        <label class="k">Base URL</label>
-        <div class="val" id="baseUrl">—</div>
-        <button class="copy" data-copy="baseUrl">копировать</button>
-      </div>
-      <div class="row">
-        <label class="k">Для Open WebUI</label>
-        <div class="val" id="baseUrlApi">—</div>
-        <button class="copy" data-copy="baseUrlApi">копировать</button>
-      </div>
-      <div class="row">
-        <label class="k">API Key</label>
-        <div class="val" id="apiKey">любой непустой (например <b>sk-qwen</b>)</div>
-        <button class="copy" data-copy-text="sk-qwen">копировать</button>
-      </div>
-      <div class="row">
-        <label class="k">Модель</label>
-        <div class="val">qwen3.7-max</div>
-        <button class="copy" data-copy-text="qwen3.7-max">копировать</button>
-      </div>
-      <div class="hint">
-        Подходит для <b>Open WebUI, Cherry Studio, Chatbox, LibreChat, SillyTavern, LiteLLM, OpenAI SDK</b> и т.п.
-        Open WebUI обычно использует URL c <code>/api</code>, большинство клиентов и OpenAI SDK — c <code>/api/v1</code>.
+  <nav class="tabs" role="tablist" aria-label="Разделы">
+    <button class="tab" role="tab" aria-selected="true" aria-controls="tab-chat" id="t-chat" data-tab="chat"><svg class="ic"><use href="#i-chat"/></svg>Чат</button>
+    <button class="tab" role="tab" aria-selected="false" aria-controls="tab-images" id="t-images" data-tab="images" tabindex="-1"><svg class="ic"><use href="#i-image"/></svg>Картинки</button>
+    <button class="tab" role="tab" aria-selected="false" aria-controls="tab-video" id="t-video" data-tab="video" tabindex="-1"><svg class="ic"><use href="#i-video"/></svg>Видео</button>
+    <button class="tab" role="tab" aria-selected="false" aria-controls="tab-overview" id="t-overview" data-tab="overview" tabindex="-1"><svg class="ic"><use href="#i-overview"/></svg>Обзор</button>
+  </nav>
+
+  <!-- ЧАТ -->
+  <section id="tab-chat" class="panel active" role="tabpanel" aria-labelledby="t-chat">
+    <div class="card full chatbox">
+      <h2><svg class="ic"><use href="#i-chat"/></svg>Плейграунд чата <span class="spacer"></span>
+        <select id="chatModel" aria-label="Модель чата"></select>
+        <button class="sm" id="clearChat"><svg class="ic"><use href="#i-trash"/></svg>очистить</button>
+      </h2>
+      <div class="msgs" id="msgs" role="log" aria-live="polite" aria-label="История чата"></div>
+      <div class="attachments" id="attachments"></div>
+      <div class="chat-input">
+        <input type="file" id="fileInput" multiple accept="image/*,.pdf,.txt,.md,.doc,.docx" style="display:none">
+        <button class="sm" id="attachBtn" title="Прикрепить файлы" aria-label="Прикрепить файлы"><svg class="ic"><use href="#i-clip"/></svg></button>
+        <textarea id="chatInput" aria-label="Сообщение" placeholder="Сообщение… (Enter — отправить, Shift+Enter — перенос)"></textarea>
+        <button class="primary" id="sendChat"><svg class="ic"><use href="#i-send"/></svg>Отправить</button>
       </div>
     </div>
+  </section>
 
-    <!-- Аккаунты -->
-    <div class="card">
-      <h2>Аккаунты Qwen</h2>
-      <div id="accList"><div class="hint">загрузка…</div></div>
-      <div class="row" style="margin-top:14px">
-        <input type="text" id="newToken" placeholder="Вставьте токен Qwen (eyJ…) и нажмите «Добавить»" autocomplete="off" spellcheck="false">
-        <button class="primary" id="addBtn">Добавить</button>
-      </div>
-      <div class="hint" id="addHint">Токен берётся в браузере: открыть <code>chat.qwen.ai</code> → F12 → Console → <code>copy(localStorage.token)</code>.</div>
-    </div>
-
-    <!-- Возможности -->
+  <!-- КАРТИНКИ -->
+  <section id="tab-images" class="panel" role="tabpanel" aria-labelledby="t-images">
     <div class="card full">
-      <h2>Что умеет</h2>
-      <div class="feat-grid">
-        <div class="feat"><b>💬 Чат и агенты</b><span><code>/api/chat/completions</code>, <code>/api/v1/chat/completions</code> — текст, стриминг, tool calling (функции)</span></div>
-        <div class="feat"><b>🖼 Картинки</b><span><code>/api/images/generations</code> — через Qwen Chat, без DashScope-ключа</span></div>
-        <div class="feat"><b>🎬 Видео</b><span><code>/api/videos/generations</code> — генерация с ожиданием задачи</span></div>
-        <div class="feat"><b>📎 Файлы</b><span><code>/api/files/upload</code> — загрузка и анализ файлов/изображений</span></div>
-        <div class="feat"><b>🔁 Мультиаккаунт</b><span>round-robin по аккаунтам — обход лимитов Qwen Chat</span></div>
-        <div class="feat"><b>🧩 Клиенты</b><span>Open WebUI, Cherry Studio, Chatbox, LibreChat, SillyTavern, OpenAI SDK, Claude Code (через LiteLLM)</span></div>
+      <h2><svg class="ic"><use href="#i-image"/></svg>Генерация картинок</h2>
+      <div class="media-controls">
+        <select id="imgModel" aria-label="Модель"></select>
+        <select id="imgAspect" aria-label="Соотношение сторон"><option>16:9</option><option>1:1</option><option>9:16</option><option>4:3</option></select>
+        <button class="primary" id="imgBtn"><svg class="ic"><use href="#i-image"/></svg>Сгенерировать</button>
+      </div>
+      <textarea id="imgPrompt" aria-label="Промпт изображения" placeholder="Опишите изображение… (Ctrl+Enter — запустить)" style="min-height:70px"></textarea>
+      <div class="media-out" id="imgOut" style="margin-top:var(--s3)"><div class="empty"><svg class="ic"><use href="#i-image"/></svg>Сгенерированные картинки появятся здесь.</div></div>
+      <div class="gallery" id="imgGallery"></div>
+    </div>
+  </section>
+
+  <!-- ВИДЕО -->
+  <section id="tab-video" class="panel" role="tabpanel" aria-labelledby="t-video">
+    <div class="card full">
+      <h2><svg class="ic"><use href="#i-video"/></svg>Генерация видео</h2>
+      <div class="media-controls">
+        <select id="vidAspect" aria-label="Соотношение сторон"><option>16:9</option><option>1:1</option><option>9:16</option></select>
+        <button class="primary" id="vidBtn"><svg class="ic"><use href="#i-video"/></svg>Сгенерировать</button>
+        <button class="sm" id="vidCancel" style="display:none">отмена</button>
+      </div>
+      <textarea id="vidPrompt" aria-label="Промпт видео" placeholder="Опишите видео… (Ctrl+Enter — запустить)" style="min-height:70px"></textarea>
+      <div class="statusline" id="vidStatus" role="status" aria-live="polite" style="display:none"></div>
+      <div class="media-out" id="vidOut" style="margin-top:var(--s3)"><div class="empty"><svg class="ic"><use href="#i-video"/></svg>Видео генерируется дольше — запустите и дождитесь.</div></div>
+    </div>
+  </section>
+
+  <!-- ОБЗОР (+ аккаунты) -->
+  <section id="tab-overview" class="panel" role="tabpanel" aria-labelledby="t-overview">
+    <div class="kpis">
+      <div class="kpi"><div class="num" id="kpiStatus">—</div><div class="lbl"><svg class="ic"><use href="#i-refresh"/></svg>статус</div></div>
+      <div class="kpi"><div class="num" id="kpiModels">—</div><div class="lbl"><svg class="ic"><use href="#i-overview"/></svg>моделей</div></div>
+      <div class="kpi"><div class="num" id="kpiAcc">—</div><div class="lbl"><svg class="ic"><use href="#i-accounts"/></svg>аккаунтов онлайн</div></div>
+      <div class="kpi"><div class="num" id="kpiDead">—</div><div class="lbl"><svg class="ic"><use href="#i-warn"/></svg>в лимите / мертвы</div></div>
+    </div>
+    <div class="grid">
+      <div class="card">
+        <h2><svg class="ic"><use href="#i-plug"/></svg>Как подключить</h2>
+        <div class="row"><label class="k">Base URL</label><div class="val" id="baseUrl">—</div><button class="sm" data-copy="baseUrl" aria-label="Копировать"><svg class="ic"><use href="#i-copy"/></svg></button></div>
+        <div class="row"><label class="k">Open WebUI</label><div class="val" id="baseUrlApi">—</div><button class="sm" data-copy="baseUrlApi" aria-label="Копировать"><svg class="ic"><use href="#i-copy"/></svg></button></div>
+        <div class="row"><label class="k">API Key</label><div class="val">любой непустой (<b>sk-qwen</b>)</div><button class="sm" data-copy-text="sk-qwen" aria-label="Копировать"><svg class="ic"><use href="#i-copy"/></svg></button></div>
+        <div class="row"><label class="k">Модель</label><div class="val" id="defModel">qwen3.7-max</div><button class="sm" data-copy="defModel" aria-label="Копировать"><svg class="ic"><use href="#i-copy"/></svg></button></div>
+        <div class="row" style="margin-top:var(--s3)">
+          <button class="sm" id="copyCurl"><svg class="ic"><use href="#i-copy"/></svg>cURL</button>
+          <button class="sm" id="copyPy"><svg class="ic"><use href="#i-copy"/></svg>Python</button>
+        </div>
+        <div class="hint">OpenAI SDK — <code>/api/v1</code>, Open WebUI — <code>/api</code>.</div>
+      </div>
+      <div class="card">
+        <h2><svg class="ic"><use href="#i-overview"/></svg>Модели (<span id="modelCount">0</span>) <span class="spacer"></span><span class="hint" style="margin:0">клик копирует</span></h2>
+        <div class="models" id="modelList"><span class="hint">загрузка…</span></div>
+      </div>
+      <div class="card full">
+        <h2><svg class="ic"><use href="#i-accounts"/></svg>Аккаунты Qwen <span class="spacer"></span>
+          <button class="sm" id="checkAllBtn"><svg class="ic"><use href="#i-check"/></svg>проверить все</button></h2>
+        <div id="accList"><span class="hint">загрузка…</span></div>
+        <div class="row" style="margin-top:var(--s4)">
+          <input type="text" id="newToken" aria-label="Новый токен Qwen" placeholder="Вставьте токен Qwen (eyJ…) и нажмите «Добавить»" autocomplete="off" spellcheck="false">
+          <button class="primary" id="addBtn">Добавить</button>
+        </div>
+        <div class="hint" id="addHint">Токен: <code>chat.qwen.ai</code> → F12 → Console → <code>copy(localStorage.token)</code> <button class="sm" id="copySnippet" style="margin-left:6px"><svg class="ic"><use href="#i-copy"/></svg>копировать команду</button></div>
       </div>
     </div>
+  </section>
 
-    <!-- Модели -->
-    <div class="card full">
-      <h2>Доступные модели (<span id="modelCount">0</span>) — клик копирует</h2>
-      <div class="models" id="modelList"></div>
-    </div>
-
-    <!-- Тест чата -->
-    <div class="card full">
-      <h2>Быстрый тест чата</h2>
-      <div class="row">
-        <select id="testModel"></select>
-        <input type="text" id="testMsg" placeholder="Сообщение, например: ответь одним словом — работает?" value="Reply with exactly one word: pong">
-        <button class="primary" id="sendBtn">Отправить</button>
-      </div>
-      <div class="testout" id="testOut">Ответ появится здесь.</div>
-    </div>
-  </div>
-
-  <footer>FreeQwenApi · дашборд · <a href="https://t.me/forgetmeai" target="_blank">t.me/forgetmeai</a></footer>
+  <footer>FreeQwenApi · дашборд · <a href="https://t.me/forgetmeai" target="_blank" rel="noopener noreferrer">t.me/forgetmeai</a></footer>
 </div>
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
 const $ = s => document.querySelector(s);
 const origin = location.origin;
-const toast = (m) => { const t=$('#toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1600); };
-const copyText = async (txt) => { try{ await navigator.clipboard.writeText(txt); toast('Скопировано'); }catch{ toast('Не удалось скопировать'); } };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const icon = id => `<svg class="ic"><use href="#${id}"/></svg>`;
+const isImg = f => /^image\//.test(f.type||'') || /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(f.name||'');
+function toast(m, kind){ const t=$('#toast'); t.innerHTML=(kind==='err'?icon('i-warn'):kind==='ok'?icon('i-check'):'')+'<span>'+esc(m)+'</span>'; t.className='toast show'+(kind?' '+kind:''); clearTimeout(toast._t); toast._t=setTimeout(()=>t.className='toast',1900); }
+async function copyText(t){
+  try{ if(navigator.clipboard && isSecureContext){ await navigator.clipboard.writeText(t); return toast('Скопировано','ok'); } throw 0; }
+  catch{ try{ const a=document.createElement('textarea'); a.value=t; a.style.position='fixed'; a.style.opacity='0'; document.body.appendChild(a); a.select(); document.execCommand('copy'); a.remove(); toast('Скопировано','ok'); }catch{ toast('Не удалось скопировать','err'); } }
+}
+function dlUrl(url, name){ return origin+'/api/download?url='+encodeURIComponent(url)+(name?('&name='+encodeURIComponent(name)):''); }
+function mdRender(text){ try{ if(window.marked&&window.DOMPurify){ const html=window.marked.parse(text,{breaks:true}); return window.DOMPurify.sanitize(html,{ADD_ATTR:['target']}); } }catch{} return null; }
 
-$('#baseUrl').textContent = origin + '/api/v1';
+const apiV1 = origin+'/api/v1';
+$('#baseUrl').textContent = apiV1;
 $('#baseUrlApi').textContent = origin + '/api';
 
-document.addEventListener('click', e => {
-  const b = e.target.closest('button.copy'); if(!b) return;
-  if(b.dataset.copyText) return copyText(b.dataset.copyText);
+// ── Вкладки ──────────────────────────────────────────────────────────────
+const TABS=['chat','images','video','overview'];
+const inited={};
+function showTab(name){
+  if(!TABS.includes(name)) name='chat';
+  document.querySelectorAll('.tab').forEach(t=>{ const on=t.dataset.tab===name; t.setAttribute('aria-selected',on); t.tabIndex=on?0:-1; });
+  document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active', p.id==='tab-'+name));
+  if(location.hash.slice(1)!==name) history.replaceState(null,'','#'+name);
+  if(!inited[name]){ inited[name]=true; lazyInit(name); }
+}
+function lazyInit(name){
+  if(name==='chat') loadChatModels();
+  else if(name==='images') loadImageModels();
+  else if(name==='overview'){ loadModels(); loadAccounts(); }
+}
+document.querySelectorAll('.tab').forEach(t=> t.onclick=()=>showTab(t.dataset.tab));
+$('.tabs').addEventListener('keydown', e=>{
+  const i=TABS.indexOf(document.activeElement.dataset?.tab); if(i<0) return;
+  let j=null;
+  if(e.key==='ArrowRight') j=(i+1)%TABS.length; else if(e.key==='ArrowLeft') j=(i-1+TABS.length)%TABS.length;
+  else if(e.key==='Home') j=0; else if(e.key==='End') j=TABS.length-1;
+  if(j!==null){ e.preventDefault(); document.getElementById('t-'+TABS[j]).focus(); showTab(TABS[j]); }
+});
+window.addEventListener('hashchange', ()=>showTab((location.hash||'#chat').slice(1)));
+
+document.addEventListener('click', e=>{
+  const b=e.target.closest('[data-copy],[data-copy-text]'); if(!b) return;
+  if(b.dataset.copyText!==undefined) return copyText(b.dataset.copyText);
   if(b.dataset.copy) return copyText($('#'+b.dataset.copy).textContent.trim());
 });
+$('#copySnippet').onclick=()=>copyText('copy(localStorage.token)');
+$('#copyCurl').onclick=()=>copyText(`curl ${apiV1}/chat/completions \\\n  -H "Authorization: Bearer sk-qwen" \\\n  -H "Content-Type: application/json" \\\n  -d '{"model":"qwen3.7-max","messages":[{"role":"user","content":"Привет"}]}'`);
+$('#copyPy').onclick=()=>copyText(`from openai import OpenAI\nclient = OpenAI(base_url="${apiV1}", api_key="sk-qwen")\nr = client.chat.completions.create(model="qwen3.7-max",\n    messages=[{"role":"user","content":"Привет"}])\nprint(r.choices[0].message.content)`);
 
+// ── Статус + KPI ───────────────────────────────────────────────────────────
 async function loadHealth(){
   try{
-    const r = await fetch(origin+'/api/health'); const j = await r.json();
-    $('#statusDot').className = 'dot on';
-    $('#statusText').textContent = 'онлайн · ' + (j.models||0) + ' моделей · ' + (j.accounts?.available??'?') + '/' + (j.accounts?.total??'?') + ' акк.';
-  }catch{
-    $('#statusDot').className='dot off'; $('#statusText').textContent='офлайн';
-  }
+    const j=await (await fetch(origin+'/api/health')).json();
+    const av=j.accounts?.available??0, tot=j.accounts?.total??0, dead=(j.accounts?.invalid||0)+(j.accounts?.waiting||0);
+    $('#statusDot').className='dot on';
+    $('#statusText').textContent='онлайн · '+(j.models||0)+' моделей · '+av+'/'+tot+' акк.';
+    $('#kpiStatus').textContent='Онлайн'; $('#kpiStatus').className='num ok';
+    $('#kpiModels').textContent=j.models||0;
+    $('#kpiAcc').textContent=av+' / '+tot; $('#kpiAcc').className='num'+(av?' ok':' err');
+    $('#kpiDead').textContent=dead; $('#kpiDead').className='num'+(dead?' warn':'');
+  }catch{ $('#statusDot').className='dot off'; $('#statusText').textContent='офлайн'; $('#kpiStatus').textContent='Офлайн'; $('#kpiStatus').className='num err'; }
 }
 
-function fmtExp(ms){
-  if(!ms) return '';
-  const d = Math.round((ms - Date.now())/86400000);
-  return new Date(ms).toISOString().slice(0,10) + ' (' + (d>=0?('через '+d+' дн'):('истёк')) + ')';
-}
-
-async function loadAccounts(){
-  try{
-    const r = await fetch(origin+'/api/accounts'); const j = await r.json();
-    const list = $('#accList');
-    if(!j.accounts || !j.accounts.length){ list.innerHTML='<div class="hint">Нет аккаунтов. Добавьте токен ниже.</div>'; return; }
-    list.innerHTML = j.accounts.map(a => `
-      <div class="acc">
-        <span class="id">${a.id}</span>
-        <span class="badge ${a.status}">${a.status}</span>
-        <span class="meta">${fmtExp(a.exp)}</span>
-        <span class="spacer"></span>
-        <button class="danger copy-no" data-del="${a.id}">удалить</button>
-      </div>`).join('');
-  }catch{ $('#accList').innerHTML='<div class="hint err-text">Не удалось загрузить аккаунты</div>'; }
-}
-
-document.addEventListener('click', async e => {
-  const d = e.target.closest('button[data-del]'); if(!d) return;
-  if(!confirm('Удалить аккаунт '+d.dataset.del+'?')) return;
-  await fetch(origin+'/api/accounts/'+encodeURIComponent(d.dataset.del),{method:'DELETE'});
-  toast('Удалён'); loadAccounts(); loadHealth();
-});
-
-$('#addBtn').onclick = async () => {
-  const token = $('#newToken').value.trim();
-  if(!token){ toast('Вставьте токен'); return; }
-  const r = await fetch(origin+'/api/accounts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})});
-  const j = await r.json();
-  if(j.ok){ toast('Добавлен '+j.id); $('#newToken').value=''; loadAccounts(); loadHealth(); }
-  else { $('#addHint').innerHTML='<span class="err-text">'+(j.error||'Ошибка')+'</span>'; }
-};
-
+// ── Модели ─────────────────────────────────────────────────────────────────
+let modelCache=[];
+async function fetchModels(){ if(modelCache.length) return modelCache; try{ const j=await (await fetch(origin+'/api/models')).json(); modelCache=(j.data||[]).map(m=>m.id);}catch{} return modelCache; }
 async function loadModels(){
-  try{
-    const r = await fetch(origin+'/api/models'); const j = await r.json();
-    const ids = (j.data||[]).map(m=>m.id);
-    $('#modelCount').textContent = ids.length;
-    $('#modelList').innerHTML = ids.map(id=>`<span class="chip" data-model="${id}">${id}</span>`).join('');
-    const sel = $('#testModel');
-    sel.innerHTML = ids.map(id=>`<option ${id==='qwen3.7-max'?'selected':''}>${id}</option>`).join('');
-  }catch{ $('#modelList').innerHTML='<div class="hint err-text">Не удалось загрузить модели</div>'; }
+  const ids=await fetchModels();
+  $('#modelCount').textContent=ids.length;
+  $('#modelList').innerHTML=ids.map(id=>`<span class="chip" data-model="${esc(id)}">${esc(id)}</span>`).join('')||'<span class="hint err-text">не удалось загрузить</span>';
+  if(ids.length && !ids.includes('qwen3.7-max')) $('#defModel').textContent=ids[0];
 }
+document.addEventListener('click', e=>{ const c=e.target.closest('.chip[data-model]'); if(c) copyText(c.dataset.model); });
 
-document.addEventListener('click', e => {
-  const c = e.target.closest('.chip[data-model]'); if(!c) return;
-  copyText(c.dataset.model);
-});
-
-$('#sendBtn').onclick = async () => {
-  const message = $('#testMsg').value.trim(); const model = $('#testModel').value;
-  if(!message) return;
-  const out = $('#testOut'); out.textContent='⏳ Отправка…'; $('#sendBtn').disabled=true;
-  const t0 = performance.now();
+// ── Аккаунты ───────────────────────────────────────────────────────────────
+function fmtExp(ms){ if(!ms) return ''; const d=Math.round((ms-Date.now())/864e5); return 'до '+new Date(ms).toISOString().slice(0,10)+(d>=0?' ('+d+' дн)':' (истёк)'); }
+function fmtTime(iso){ try{ return new Date(iso).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}); }catch{ return ''; } }
+const stLabel=s=>({OK:'активен',WAIT:'лимит',INVALID:'невалиден',EXPIRED:'истёк',ERROR:'ошибка'})[s]||s;
+async function loadAccounts(){
+  const list=$('#accList');
   try{
-    const r = await fetch(origin+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message,model})});
-    const j = await r.json();
-    const dt = ((performance.now()-t0)/1000).toFixed(1);
-    const content = j?.choices?.[0]?.message?.content;
-    if(content) out.textContent = content + '\n\n— ' + model + ', ' + dt + ' c';
-    else out.innerHTML = '<span class="err-text">'+ (j.error||'Ошибка') +'</span>\n'+ (j.details? JSON.stringify(JSON.parse(j.details),null,2):'');
-  }catch(e){ out.innerHTML='<span class="err-text">Сеть недоступна: '+e.message+'</span>'; }
-  $('#sendBtn').disabled=false;
+    const j=await (await fetch(origin+'/api/accounts')).json();
+    if(!j.accounts||!j.accounts.length){ list.innerHTML='<div class="onboard">Пока нет аккаунтов. Откройте <b>chat.qwen.ai</b>, войдите, затем <b>F12 → Console</b> → <code>copy(localStorage.token)</code> и вставьте токен ниже.</div>'; return; }
+    list.innerHTML=j.accounts.map(a=>{
+      const meta=a.resetAt?('лимит до '+fmtTime(a.resetAt)):fmtExp(a.exp);
+      return `<div class="acc ${a.status}" data-id="${esc(a.id)}">
+        <span class="id">${esc(a.id)}</span><span class="badge ${a.status}">${stLabel(a.status)}</span>
+        <span class="meta">${esc(a.preview||'')}</span><span class="meta">${esc(meta)}</span><span class="spacer"></span>
+        <button class="sm" data-check="${esc(a.id)}" aria-label="Проверить ${esc(a.id)}">${icon('i-check')}проверить</button>
+        <button class="sm" data-relogin="${esc(a.id)}" aria-label="Обновить токен ${esc(a.id)}">${icon('i-key')}токен</button>
+        <button class="sm danger" data-del="${esc(a.id)}" aria-label="Удалить ${esc(a.id)}">${icon('i-trash')}</button>
+      </div>
+      <div class="relogin-box" data-box="${esc(a.id)}" style="display:none">
+        <input type="text" aria-label="Новый токен для ${esc(a.id)}" placeholder="Новый токен Qwen (eyJ…)" data-newtok="${esc(a.id)}" autocomplete="off" spellcheck="false">
+        <button class="primary sm" data-save="${esc(a.id)}">Сохранить</button><button class="sm" data-cancel="${esc(a.id)}">Отмена</button>
+      </div>`;
+    }).join('');
+  }catch{ list.innerHTML='<div class="hint err-text">Не удалось загрузить аккаунты</div>'; }
+}
+$('#checkAllBtn').onclick=async()=>{
+  const b=$('#checkAllBtn'); b.disabled=true;
+  try{
+    const j=await (await fetch(origin+'/api/accounts')).json(); const ids=(j.accounts||[]).map(a=>a.id); let i=0;
+    for(const id of ids){ i++; b.innerHTML=icon('i-refresh')+'проверка '+i+'/'+ids.length;
+      try{ await fetch(origin+'/api/accounts/'+encodeURIComponent(id)+'/check',{method:'POST',headers:{'Content-Type':'application/json'}}); }catch{} }
+    await loadAccounts(); await loadHealth(); toast('Проверено: '+ids.length,'ok');
+  }catch{ toast('Ошибка проверки','err'); }
+  b.disabled=false; b.innerHTML=icon('i-check')+'проверить все';
 };
+$('#addBtn').onclick=async()=>{
+  const token=$('#newToken').value.trim(); if(!token) return toast('Вставьте токен','err');
+  if(!token.startsWith('eyJ')) return toast('Похоже, это не токен (eyJ…)','err');
+  const btn=$('#addBtn'); btn.disabled=true;
+  try{ const j=await (await fetch(origin+'/api/accounts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})})).json();
+    if(j.ok){ toast('Добавлен '+j.id,'ok'); $('#newToken').value=''; loadAccounts(); loadHealth(); } else toast(j.error||'Ошибка','err'); }
+  catch{ toast('Сеть недоступна','err'); }
+  btn.disabled=false;
+};
+document.addEventListener('click', async e=>{
+  const t=e.target.closest('button'); if(!t) return;
+  if(t.dataset.check){ const badge=t.closest('.acc').querySelector('.badge'); badge.className='badge checking'; badge.textContent='проверка'; t.disabled=true;
+    try{ await fetch(origin+'/api/accounts/'+encodeURIComponent(t.dataset.check)+'/check',{method:'POST',headers:{'Content-Type':'application/json'}}); await loadAccounts(); await loadHealth(); }catch{ toast('Ошибка','err'); loadAccounts(); } return; }
+  if(t.dataset.del){ if(!confirm('Удалить аккаунт '+t.dataset.del+'?')) return; t.disabled=true;
+    try{ await fetch(origin+'/api/accounts/'+encodeURIComponent(t.dataset.del),{method:'DELETE'}); toast('Удалён','ok'); }catch{ toast('Ошибка','err'); } loadAccounts(); loadHealth(); return; }
+  if(t.dataset.relogin){ const b=document.querySelector('[data-box="'+CSS.escape(t.dataset.relogin)+'"]'); if(b){ b.style.display='flex'; b.querySelector('input')?.focus(); } return; }
+  if(t.dataset.cancel){ const b=document.querySelector('[data-box="'+CSS.escape(t.dataset.cancel)+'"]'); if(b) b.style.display='none'; return; }
+  if(t.dataset.save){ const id=t.dataset.save, inp=document.querySelector('[data-newtok="'+CSS.escape(id)+'"]'); const token=(inp?.value||'').trim();
+    if(!token) return toast('Вставьте токен','err'); t.disabled=true;
+    try{ const j=await (await fetch(origin+'/api/accounts/'+encodeURIComponent(id)+'/update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})})).json();
+      if(j.ok){ toast('Токен обновлён: '+id,'ok'); loadAccounts(); loadHealth(); } else { toast(j.error||'Ошибка','err'); t.disabled=false; } }
+    catch{ toast('Сеть недоступна','err'); t.disabled=false; } return; }
+});
+setInterval(()=>{ if($('#tab-overview').classList.contains('active') && inited.overview) loadAccounts(); }, 20000);
 
-loadHealth(); loadAccounts(); loadModels();
-setInterval(loadHealth, 15000);
+// ── Чат (история + файлы + markdown, через /api/chat/completions) ────────────
+let chatHistory=[], chatBusy=false, chatAbort=null, pendingFiles=[];
+async function loadChatModels(){ const ids=await fetchModels(); $('#chatModel').innerHTML=ids.map(id=>`<option ${id==='qwen3.7-max'?'selected':''}>${esc(id)}</option>`).join('')||'<option>qwen3.7-max</option>'; renderChat(); }
+function attHtml(a){ return isImg(a) ? `<img src="${esc(a.url)}" alt="${esc(a.name)}"><a href="${esc(dlUrl(a.url,a.name))}">скачать</a>` : `<a href="${esc(dlUrl(a.url,a.name))}">${esc(a.name)}</a>`; }
+function bubbleEl(m){
+  const d=document.createElement('div'); d.className='bubble '+m.role+(m.err?' err':'');
+  d.innerHTML='<div class="role">'+(m.role==='user'?'Вы':'AI')+'</div>';
+  const c=document.createElement('div'); c.className='body';
+  if(m.role==='assistant' && !m.err && m.done){ const html=mdRender(m.content); if(html){ c.className='body md'; c.innerHTML=html; } else { c.textContent=m.content; d.classList.add('plain'); } }
+  else { c.textContent=m.content; if(m.role!=='user') d.classList.add('plain'); }
+  d.appendChild(c);
+  if(m.atts && m.atts.length){ const a=document.createElement('div'); a.className='msg-atts'; a.innerHTML=m.atts.map(attHtml).join(''); d.appendChild(a); }
+  d._c=c; return d;
+}
+function renderChat(){
+  const box=$('#msgs');
+  if(!chatHistory.length){ box.innerHTML='<div class="empty">'+icon('i-chat')+'Начните диалог — ответ стримингом с markdown, контекст и файлы поддерживаются.</div>'; return; }
+  box.innerHTML=''; chatHistory.forEach(m=>box.appendChild(bubbleEl(m))); box.scrollTop=box.scrollHeight;
+}
+function atBottom(){ const b=$('#msgs'); return b.scrollHeight-b.scrollTop-b.clientHeight<60; }
+function setBusy(b){ chatBusy=b; const btn=$('#sendChat'); btn.innerHTML=b?'Стоп':icon('i-send')+'Отправить'; btn.classList.toggle('danger',b); }
+
+// вложения
+function renderAtts(){
+  $('#attachments').innerHTML=pendingFiles.map((f,i)=>`<span class="att${f.up?' up':''}">${f.up?'<span class="spinner" style="width:11px;height:11px"></span>':''}${esc(f.name)}<span class="x" data-rmatt="${i}">✕</span></span>`).join('');
+}
+$('#attachBtn').onclick=()=>$('#fileInput').click();
+$('#fileInput').onchange=async e=>{
+  for(const file of e.target.files){
+    const slot={name:file.name,type:file.type,up:true}; pendingFiles.push(slot); renderAtts();
+    try{ const fd=new FormData(); fd.append('file',file);
+      const j=await (await fetch(origin+'/api/files/upload',{method:'POST',body:fd})).json();
+      if(j.success&&j.file){ slot.url=j.file.url; slot.up=false; slot.type=j.file.type||slot.type; }
+      else { pendingFiles=pendingFiles.filter(x=>x!==slot); toast(j.error||'Ошибка загрузки '+file.name,'err'); }
+    }catch{ pendingFiles=pendingFiles.filter(x=>x!==slot); toast('Не удалось загрузить '+file.name,'err'); }
+    renderAtts();
+  }
+  e.target.value='';
+  if(pendingFiles.length){ const m=$('#chatModel').value; if(!/vl|plus/i.test(m)) toast('Для файлов лучше qwen3.7-plus или qwen3-vl-plus','ok'); }
+};
+$('#attachments').onclick=e=>{ const x=e.target.closest('[data-rmatt]'); if(x){ pendingFiles.splice(+x.dataset.rmatt,1); renderAtts(); } };
+
+async function sendChat(){
+  if(chatBusy){ chatAbort?.abort(); return; }
+  const text=$('#chatInput').value.trim();
+  const atts=pendingFiles.filter(f=>f.url&&!f.up);
+  if(!text && !atts.length) return;
+  const userMsg={role:'user',content:text,atts:atts.map(a=>({name:a.name,url:a.url,type:a.type}))};
+  chatHistory.push(userMsg); pendingFiles=[]; renderAtts(); $('#chatInput').value='';
+  const asst={role:'assistant',content:''}; chatHistory.push(asst);
+  const box=$('#msgs'); if(chatHistory.length===2) box.innerHTML='';
+  box.appendChild(bubbleEl(userMsg));
+  const node=bubbleEl(asst); node.classList.add('streaming','plain'); box.appendChild(node); box.scrollTop=box.scrollHeight;
+  setBusy(true); chatAbort=new AbortController();
+
+  // собрать OpenAI messages: история (текст) + последнее user с вложениями
+  const msgs=chatHistory.slice(0,-1).map((m,idx,arr)=>{
+    if(idx===arr.length-1 && m.role==='user' && userMsg.atts.length){
+      const imgs=userMsg.atts.filter(isImg), docs=userMsg.atts.filter(a=>!isImg(a));
+      const content = imgs.length ? [{type:'text',text:m.content||''},...imgs.map(a=>({type:'image_url',image_url:{url:a.url}}))] : (m.content||'');
+      const out={role:'user',content};
+      if(docs.length) out.files=docs.map(a=>({name:a.name,url:a.url,type:a.type}));
+      return out;
+    }
+    return {role:m.role,content:m.content};
+  });
+
+  try{
+    const r=await fetch(origin+'/api/chat/completions',{method:'POST',headers:{'Content-Type':'application/json'},signal:chatAbort.signal,
+      body:JSON.stringify({model:$('#chatModel').value,messages:msgs,stream:true})});
+    if(!r.ok||!r.body) throw new Error('HTTP '+r.status);
+    const reader=r.body.getReader(), dec=new TextDecoder(); let buf='';
+    while(true){
+      const {value,done}=await reader.read(); if(done) break;
+      buf+=dec.decode(value,{stream:true}); const lines=buf.split('\n'); buf=lines.pop()||'';
+      for(const line of lines){ const s=line.trim(); if(!s.startsWith('data:')) continue; const p=s.slice(5).trim(); if(p==='[DONE]'){ buf=''; break; }
+        try{ const d=JSON.parse(p).choices?.[0]?.delta?.content; if(d){ asst.content+=d; node._c.textContent=asst.content; if(atBottom()) box.scrollTop=box.scrollHeight; } }catch{} }
+    }
+    if(!asst.content){ chatHistory.pop(); node.remove(); toast('Пустой ответ','err'); }
+    else { asst.done=true; const html=mdRender(asst.content); if(html){ node.classList.remove('plain'); node._c.className='body md'; node._c.innerHTML=html; } if(atBottom()) box.scrollTop=box.scrollHeight; }
+  }catch(e){
+    if(e.name==='AbortError'){ if(!asst.content){ chatHistory.pop(); node.remove(); } else asst.done=true; }
+    else { asst.content='⚠ '+e.message; node._c.textContent=asst.content; node.classList.add('err'); asst.err=true; }
+  }finally{ node.classList.remove('streaming'); setBusy(false); chatAbort=null; }
+}
+$('#sendChat').onclick=sendChat;
+$('#chatInput').addEventListener('keydown', e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); sendChat(); } });
+$('#clearChat').onclick=()=>{ if(chatBusy) chatAbort?.abort(); chatHistory=[]; pendingFiles=[]; renderAtts(); renderChat(); };
+
+// ── Картинки ───────────────────────────────────────────────────────────────
+let imgSeq=0;
+async function loadImageModels(){ let ids=['qwen3-vl-plus']; try{ const j=await (await fetch(origin+'/api/images/models')).json(); const g=(j.data||[]).map(m=>m.id); if(g.length) ids=g; }catch{} $('#imgModel').innerHTML=ids.map(id=>`<option ${id==='qwen3-vl-plus'?'selected':''}>${esc(id)}</option>`).join(''); }
+async function genImage(){
+  const prompt=$('#imgPrompt').value.trim(); if(!prompt) return toast('Введите промпт','err');
+  const seq=++imgSeq; const out=$('#imgOut'); out.innerHTML='<div class="statusline"><span class="spinner"></span> Генерация изображения…</div>'; $('#imgBtn').disabled=true;
+  try{
+    const j=await (await fetch(origin+'/api/images/generations',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({prompt,model:$('#imgModel').value,aspect_ratio:$('#imgAspect').value})})).json();
+    if(seq!==imgSeq) return;
+    const url=j?.data?.[0]?.url; if(!url) throw new Error(j.message||j.error||'URL не получен');
+    out.innerHTML=`<img src="${esc(url)}" alt="${esc(prompt)}" loading="lazy"><div class="media-actions"><a href="${esc(url)}" target="_blank" rel="noopener">открыть</a><a href="${esc(dlUrl(url,'qwen-image.png'))}">скачать</a></div>`;
+    const t=document.createElement('div'); t.className='gthumb';
+    t.innerHTML=`<a href="${esc(url)}" target="_blank" rel="noopener"><img src="${esc(url)}" alt="${esc(prompt)}" loading="lazy" title="${esc(prompt)}"></a><a class="dl" href="${esc(dlUrl(url,'qwen-image.png'))}">↓</a>`;
+    $('#imgGallery').prepend(t);
+  }catch(e){ if(seq===imgSeq){ out.innerHTML='<span class="err-text">'+icon('i-warn')+' '+esc(e.message)+'</span> <button class="sm" onclick="genImage()">повторить</button>'; } }
+  $('#imgBtn').disabled=false;
+}
+$('#imgBtn').onclick=genImage;
+$('#imgPrompt').addEventListener('keydown',e=>{ if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){ e.preventDefault(); genImage(); }});
+
+// ── Видео ────────────────────────────────────────────────────────────────────
+let videoPoll=null, videoCancelled=false;
+function vidStatus(msg,busy){ const s=$('#vidStatus'); s.style.display='flex'; s.innerHTML=(busy?'<span class="spinner"></span> ':'')+esc(msg); }
+async function genVideo(){
+  const prompt=$('#vidPrompt').value.trim(); if(!prompt) return toast('Введите промпт','err');
+  clearTimeout(videoPoll); videoCancelled=false; $('#vidBtn').disabled=true; $('#vidCancel').style.display=''; $('#vidOut').innerHTML=''; vidStatus('Создаём задачу…',true);
+  try{
+    const j=await (await fetch(origin+'/api/videos/generations',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({prompt,aspect_ratio:$('#vidAspect').value,wait:false})})).json();
+    const url=j.video_url||j.media_url; if(url) return showVideo(url);
+    if(!j.task_id) throw new Error(j.message||j.error||'Нет task_id'); pollVideo(j.task_id);
+  }catch(e){ vidStatus('⚠ '+e.message,false); endVideo(); }
+}
+function endVideo(){ $('#vidBtn').disabled=false; $('#vidCancel').style.display='none'; }
+function showVideo(url){ $('#vidOut').innerHTML=`<video src="${esc(url)}" controls autoplay muted></video><div class="media-actions"><a href="${esc(url)}" target="_blank" rel="noopener">открыть</a><a href="${esc(dlUrl(url,'qwen-video.mp4'))}">скачать</a></div>`; vidStatus('Готово',false); endVideo(); }
+function pollVideo(taskId){
+  const started=Date.now(), MAX=5*60*1000; let n=0;
+  const tick=async()=>{
+    if(videoCancelled) return;
+    n++; const sec=Math.round((Date.now()-started)/1000); vidStatus('Рендеринг… '+sec+'s (попытка '+n+')',true);
+    if(Date.now()-started>MAX){ vidStatus('⚠ Таймаут (5 мин). Задача может завершиться позже.',false); endVideo(); return; }
+    try{ const j=await (await fetch(origin+'/api/tasks/status/'+encodeURIComponent(taskId)+'?wait=false')).json();
+      const url=j.video_url||j.media_url;
+      if(j.status==='completed'||url){ return url?showVideo(url):(vidStatus('⚠ completed без URL',false),endVideo()); }
+      if(j.status==='failed'){ vidStatus('⚠ '+(j.error||'Задача провалилась'),false); endVideo(); return; }
+    }catch{}
+    videoPoll=setTimeout(tick,4000);
+  };
+  videoPoll=setTimeout(tick,4000);
+}
+$('#vidBtn').onclick=genVideo;
+$('#vidCancel').onclick=()=>{ videoCancelled=true; clearTimeout(videoPoll); vidStatus('Отменено',false); endVideo(); };
+$('#vidPrompt').addEventListener('keydown',e=>{ if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){ e.preventDefault(); genVideo(); }});
+
+// ── Старт ──────────────────────────────────────────────────────────────────
+showTab((location.hash||'#chat').slice(1)||'chat');
+loadHealth(); setInterval(loadHealth, 15000);
 </script>
 </body>
 </html>
