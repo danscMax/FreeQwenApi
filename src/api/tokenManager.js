@@ -85,6 +85,21 @@ export function markValid(id, newToken) {
     }
 }
 
+// Устанавливает человекочитаемый ярлык аккаунта (для различения в пуле).
+// Пустая строка очищает ярлык. Возвращает { ok, id, label } либо { error }.
+export function setLabel(id, rawLabel) {
+    if (typeof id !== 'string' || !/^acc_[a-zA-Z0-9]+$/.test(id)) {
+        return { error: 'Некорректный id аккаунта' };
+    }
+    const label = String(rawLabel ?? '').trim().slice(0, 60);
+    const tokens = loadTokens();
+    const idx = tokens.findIndex(t => t.id === id);
+    if (idx === -1) return { error: 'Аккаунт не найден' };
+    tokens[idx].label = label;
+    saveTokens(tokens);
+    return { ok: true, id, label };
+}
+
 // Обновляет токен существующего аккаунта (relogin из дашборда):
 // markValid (обновляет token + сбрасывает invalid/resetAt) + перезапись token.txt.
 export function updateAccountToken(id, rawToken) {
@@ -132,7 +147,7 @@ export function decodeTokenInfo(token) {
 
 // Добавляет токен вручную (из дашборда), без запуска браузера.
 // Возвращает { id } при успехе либо { error }.
-export function addTokenFromString(rawToken) {
+export function addTokenFromString(rawToken, label) {
     const token = String(rawToken || '').trim();
     if (!token.startsWith('eyJ') || token.split('.').length !== 3) {
         return { error: 'Невалидный токен: ожидается JWT (eyJ...)' };
@@ -150,7 +165,7 @@ export function addTokenFromString(rawToken) {
     fs.mkdirSync(accDir, { recursive: true });
     fs.writeFileSync(path.join(accDir, 'token.txt'), token, 'utf8');
 
-    tokens.push({ id, token, resetAt: null });
+    tokens.push({ id, token, resetAt: null, label: String(label || '').trim().slice(0, 60) });
     saveTokens(tokens);
     return { id };
 }

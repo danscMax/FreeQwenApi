@@ -98,6 +98,7 @@
   .acc.OK{border-left-color:var(--ok)} .acc.WAIT{border-left-color:var(--warn)}
   .acc.INVALID,.acc.EXPIRED,.acc.ERROR{border-left-color:var(--err)}
   .acc .id{font-weight:600;font-size:var(--fs-sm)}
+  .acc .acclabel{font-weight:600;font-size:var(--fs-sm);color:var(--accent)}
   .acc .meta{color:var(--muted);font-size:var(--fs-xs);font-family:var(--mono)}
   .badge{font-size:var(--fs-xs);font-weight:700;padding:3px 9px;border-radius:4px;display:inline-flex;align-items:center;gap:5px}
   .badge::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
@@ -374,12 +375,18 @@ async function loadAccounts(){
     if(!j.accounts||!j.accounts.length){ list.innerHTML='<div class="onboard">Пока нет аккаунтов. Откройте <b>chat.qwen.ai</b>, войдите, затем <b>F12 → Console</b> → <code>copy(localStorage.token)</code> и вставьте токен ниже.</div>'; return; }
     list.innerHTML=j.accounts.map(a=>{
       const meta=a.resetAt?('лимит до '+fmtTime(a.resetAt)):fmtExp(a.exp);
+      const label=a.label||'';
       return `<div class="acc ${a.status}" data-id="${esc(a.id)}">
-        <span class="id">${esc(a.id)}</span><span class="badge ${a.status}">${stLabel(a.status)}</span>
+        <span class="id">${esc(a.id)}</span>${label?`<span class="acclabel">${esc(label)}</span>`:''}<span class="badge ${a.status}">${stLabel(a.status)}</span>
         <span class="meta">${esc(a.preview||'')}</span><span class="meta">${esc(meta)}</span><span class="spacer"></span>
+        <button class="sm" data-editlabel="${esc(a.id)}" aria-label="Изменить ярлык ${esc(a.id)}" title="Ярлык">✎</button>
         <button class="sm" data-check="${esc(a.id)}" aria-label="Проверить ${esc(a.id)}">${icon('i-check')}проверить</button>
         <button class="sm" data-relogin="${esc(a.id)}" aria-label="Обновить токен ${esc(a.id)}">${icon('i-key')}токен</button>
         <button class="sm danger" data-del="${esc(a.id)}" aria-label="Удалить ${esc(a.id)}">${icon('i-trash')}</button>
+      </div>
+      <div class="relogin-box" data-labelbox="${esc(a.id)}" style="display:none">
+        <input type="text" aria-label="Ярлык для ${esc(a.id)}" placeholder="Имя аккаунта (рабочий, личный…)" data-newlabel="${esc(a.id)}" value="${esc(label)}" maxlength="60" autocomplete="off">
+        <button class="primary sm" data-savelabel="${esc(a.id)}">Сохранить</button><button class="sm" data-cancellabel="${esc(a.id)}">Отмена</button>
       </div>
       <div class="relogin-box" data-box="${esc(a.id)}" style="display:none">
         <input type="text" aria-label="Новый токен для ${esc(a.id)}" placeholder="Новый токен Qwen (eyJ…)" data-newtok="${esc(a.id)}" autocomplete="off" spellcheck="false">
@@ -419,6 +426,12 @@ document.addEventListener('click', async e=>{
     if(!token) return toast('Вставьте токен','err'); t.disabled=true;
     try{ const j=await (await fetch(origin+'/api/accounts/'+encodeURIComponent(id)+'/update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})})).json();
       if(j.ok){ toast('Токен обновлён: '+id,'ok'); loadAccounts(); loadHealth(); } else { toast(j.error||'Ошибка','err'); t.disabled=false; } }
+    catch{ toast('Сеть недоступна','err'); t.disabled=false; } return; }
+  if(t.dataset.editlabel){ const b=document.querySelector('[data-labelbox="'+CSS.escape(t.dataset.editlabel)+'"]'); if(b){ b.style.display='flex'; const i=b.querySelector('input'); i?.focus(); i?.select(); } return; }
+  if(t.dataset.cancellabel){ const b=document.querySelector('[data-labelbox="'+CSS.escape(t.dataset.cancellabel)+'"]'); if(b) b.style.display='none'; return; }
+  if(t.dataset.savelabel){ const id=t.dataset.savelabel, inp=document.querySelector('[data-newlabel="'+CSS.escape(id)+'"]'); const label=(inp?.value||'').trim(); t.disabled=true;
+    try{ const j=await (await fetch(origin+'/api/accounts/'+encodeURIComponent(id)+'/label',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label})})).json();
+      if(j.ok){ toast('Ярлык сохранён','ok'); loadAccounts(); } else { toast(j.error||'Ошибка','err'); t.disabled=false; } }
     catch{ toast('Сеть недоступна','err'); t.disabled=false; } return; }
 });
 setInterval(()=>{ if($('#tab-overview').classList.contains('active') && inited.overview) loadAccounts(); }, 20000);
