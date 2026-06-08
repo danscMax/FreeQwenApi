@@ -1079,7 +1079,7 @@ function sameOriginOnly(req, res, next) {
     return next();
 }
 
-router.get('/accounts', localOnly, (req, res) => {
+router.get('/accounts', localOnly, sameOriginOnly, (req, res) => {
     try {
         const now = Date.now();
         const accounts = listTokens().map(t => {
