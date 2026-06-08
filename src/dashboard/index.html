@@ -118,6 +118,14 @@
   .bubble.err{border-color:var(--err);color:#ff7b72;white-space:pre-wrap}
   .bubble .role{font-size:10px;text-transform:uppercase;letter-spacing:.06em;opacity:.65;margin-bottom:4px;font-weight:700}
   .bubble.streaming::after{content:"▍";animation:blink 1s steps(2) infinite;color:var(--accent)}
+  .bubble{position:relative}
+  .bubble-copy{position:absolute;top:6px;right:6px;padding:2px 5px;opacity:0;transition:opacity .12s}
+  .bubble:hover .bubble-copy{opacity:.55} .bubble-copy:hover{opacity:1}
+  .bubble-retry{margin-top:7px}
+  .body.md pre{position:relative}
+  .code-copy{position:absolute;top:5px;right:5px;padding:2px 6px;opacity:0;transition:opacity .12s}
+  .body.md pre:hover .code-copy{opacity:.7} .code-copy:hover{opacity:1}
+  .acc button.danger.armed{background:var(--err);color:#fff;border-color:var(--err)}
   @keyframes blink{50%{opacity:0}}
   /* markdown внутри ответа */
   .md>*:first-child{margin-top:0}.md>*:last-child{margin-bottom:0}
@@ -272,6 +280,7 @@
       </div>
       <div class="card full">
         <h2><svg class="ic"><use href="#i-accounts"/></svg>Аккаунты Qwen <span class="spacer"></span>
+          <span id="accUpdated" class="hint" style="margin:0 8px 0 0"></span>
           <button class="sm" id="checkAllBtn"><svg class="ic"><use href="#i-check"/></svg>проверить все</button></h2>
         <div id="accList"><span class="hint">загрузка…</span></div>
         <div class="row" style="margin-top:var(--s4)">
@@ -393,6 +402,7 @@ async function loadAccounts(){
         <button class="primary sm" data-save="${esc(a.id)}">Сохранить</button><button class="sm" data-cancel="${esc(a.id)}">Отмена</button>
       </div>`;
     }).join('');
+    const u=$('#accUpdated'); if(u) u.textContent='обновлено '+fmtTime(new Date().toISOString());
   }catch{ list.innerHTML='<div class="hint err-text">Не удалось загрузить аккаунты</div>'; }
 }
 $('#checkAllBtn').onclick=async()=>{
@@ -418,7 +428,9 @@ document.addEventListener('click', async e=>{
   const t=e.target.closest('button'); if(!t) return;
   if(t.dataset.check){ const badge=t.closest('.acc').querySelector('.badge'); badge.className='badge checking'; badge.textContent='проверка'; t.disabled=true;
     try{ await fetch(origin+'/api/accounts/'+encodeURIComponent(t.dataset.check)+'/check',{method:'POST',headers:{'Content-Type':'application/json'}}); await loadAccounts(); await loadHealth(); }catch{ toast('Ошибка','err'); loadAccounts(); } return; }
-  if(t.dataset.del){ if(!confirm('Удалить аккаунт '+t.dataset.del+'?')) return; t.disabled=true;
+  if(t.dataset.del){
+    if(t.dataset.armed!=='1'){ const o=t.innerHTML; t.dataset.armed='1'; t.classList.add('armed'); t.innerHTML='точно?'; setTimeout(()=>{ if(t.isConnected){ t.dataset.armed=''; t.classList.remove('armed'); t.innerHTML=o; } },3000); return; }
+    t.disabled=true;
     try{ await fetch(origin+'/api/accounts/'+encodeURIComponent(t.dataset.del),{method:'DELETE'}); toast('Удалён','ok'); }catch{ toast('Ошибка','err'); } loadAccounts(); loadHealth(); return; }
   if(t.dataset.relogin){ const b=document.querySelector('[data-box="'+CSS.escape(t.dataset.relogin)+'"]'); if(b){ b.style.display='flex'; b.querySelector('input')?.focus(); } return; }
   if(t.dataset.cancel){ const b=document.querySelector('[data-box="'+CSS.escape(t.dataset.cancel)+'"]'); if(b) b.style.display='none'; return; }
@@ -438,16 +450,35 @@ setInterval(()=>{ if($('#tab-overview').classList.contains('active') && inited.o
 
 // ── Чат (история + файлы + markdown, через /api/chat/completions) ────────────
 let chatHistory=[], chatBusy=false, chatAbort=null, pendingFiles=[];
-async function loadChatModels(){ const ids=await fetchModels(); $('#chatModel').innerHTML=ids.map(id=>`<option ${id==='qwen3.7-max'?'selected':''}>${esc(id)}</option>`).join('')||'<option>qwen3.7-max</option>'; renderChat(); }
+async function loadChatModels(){ const ids=await fetchModels(); let saved=null; try{ saved=localStorage.getItem('qwen_chat_model'); }catch{} const sel=(saved&&ids.includes(saved))?saved:'qwen3.7-max'; $('#chatModel').innerHTML=ids.map(id=>`<option ${id===sel?'selected':''}>${esc(id)}</option>`).join('')||'<option>qwen3.7-max</option>'; renderChat(); }
+$('#chatModel').addEventListener('change', ()=>{ try{ localStorage.setItem('qwen_chat_model', $('#chatModel').value); }catch{} });
 function attHtml(a){ return isImg(a) ? `<img src="${esc(a.url)}" alt="${esc(a.name)}"><a href="${esc(dlUrl(a.url,a.name))}">скачать</a>` : `<a href="${esc(dlUrl(a.url,a.name))}">${esc(a.name)}</a>`; }
+function addCodeCopies(container){
+  container.querySelectorAll('pre').forEach(pre=>{
+    if(pre.querySelector('.code-copy')) return;
+    const code=pre.querySelector('code')||pre;
+    const b=document.createElement('button'); b.className='sm code-copy'; b.innerHTML=icon('i-copy');
+    b.title='Копировать код'; b.setAttribute('aria-label','Копировать код');
+    b.onclick=()=>copyText(code.textContent);
+    pre.appendChild(b);
+  });
+}
+function addBubbleCopy(d, m){
+  if(!m.content || d.querySelector('.bubble-copy')) return;
+  const cp=document.createElement('button'); cp.className='sm bubble-copy'; cp.innerHTML=icon('i-copy');
+  cp.title='Копировать ответ'; cp.setAttribute('aria-label','Копировать ответ');
+  cp.onclick=()=>copyText(m.content); d.appendChild(cp);
+}
 function bubbleEl(m){
   const d=document.createElement('div'); d.className='bubble '+m.role+(m.err?' err':'');
   d.innerHTML='<div class="role">'+(m.role==='user'?'Вы':'AI')+'</div>';
   const c=document.createElement('div'); c.className='body';
-  if(m.role==='assistant' && !m.err && m.done){ const html=mdRender(m.content); if(html){ c.className='body md'; c.innerHTML=html; } else { c.textContent=m.content; d.classList.add('plain'); } }
+  if(m.role==='assistant' && !m.err && m.done){ const html=mdRender(m.content); if(html){ c.className='body md'; c.innerHTML=html; addCodeCopies(c); } else { c.textContent=m.content; d.classList.add('plain'); } }
   else { c.textContent=m.content; if(m.role!=='user') d.classList.add('plain'); }
   d.appendChild(c);
   if(m.atts && m.atts.length){ const a=document.createElement('div'); a.className='msg-atts'; a.innerHTML=m.atts.map(attHtml).join(''); d.appendChild(a); }
+  if(m.role==='assistant' && m.err){ const rb=document.createElement('button'); rb.className='sm bubble-retry'; rb.innerHTML=icon('i-refresh')+'Повторить'; rb.setAttribute('aria-label','Повторить запрос'); rb.onclick=retryLast; d.appendChild(rb); }
+  else if(m.role==='assistant' && !m.err) addBubbleCopy(d, m);
   d._c=c; return d;
 }
 function renderChat(){
@@ -484,7 +515,7 @@ async function sendChat(){
   const atts=pendingFiles.filter(f=>f.url&&!f.up);
   if(!text && !atts.length) return;
   const userMsg={role:'user',content:text,atts:atts.map(a=>({name:a.name,url:a.url,type:a.type}))};
-  chatHistory.push(userMsg); pendingFiles=[]; renderAtts(); $('#chatInput').value='';
+  chatHistory.push(userMsg); pendingFiles=[]; renderAtts(); $('#chatInput').value=''; $('#chatInput').style.height='auto';
   const asst={role:'assistant',content:''}; chatHistory.push(asst);
   const box=$('#msgs'); if(chatHistory.length===2) box.innerHTML='';
   box.appendChild(bubbleEl(userMsg));
@@ -515,14 +546,21 @@ async function sendChat(){
         try{ const d=JSON.parse(p).choices?.[0]?.delta?.content; if(d){ asst.content+=d; node._c.textContent=asst.content; if(atBottom()) box.scrollTop=box.scrollHeight; } }catch{} }
     }
     if(!asst.content){ chatHistory.pop(); node.remove(); toast('Пустой ответ','err'); }
-    else { asst.done=true; const html=mdRender(asst.content); if(html){ node.classList.remove('plain'); node._c.className='body md'; node._c.innerHTML=html; } if(atBottom()) box.scrollTop=box.scrollHeight; }
+    else { asst.done=true; const html=mdRender(asst.content); if(html){ node.classList.remove('plain'); node._c.className='body md'; node._c.innerHTML=html; addCodeCopies(node._c); } addBubbleCopy(node, asst); if(atBottom()) box.scrollTop=box.scrollHeight; }
   }catch(e){
     if(e.name==='AbortError'){ if(!asst.content){ chatHistory.pop(); node.remove(); } else asst.done=true; }
-    else { asst.content='⚠ '+e.message; node._c.textContent=asst.content; node.classList.add('err'); asst.err=true; }
+    else { asst.content='⚠ '+e.message; asst.err=true; renderChat(); }
   }finally{ node.classList.remove('streaming'); setBusy(false); chatAbort=null; }
+}
+function retryLast(){
+  if(chatBusy) return;
+  if(chatHistory[chatHistory.length-1]?.role==='assistant') chatHistory.pop();
+  const lu=chatHistory[chatHistory.length-1];
+  if(lu?.role==='user'){ chatHistory.pop(); $('#chatInput').value=lu.content||''; if(lu.atts?.length){ pendingFiles=lu.atts.map(a=>({name:a.name,url:a.url,type:a.type,up:false})); renderAtts(); } renderChat(); sendChat(); }
 }
 $('#sendChat').onclick=sendChat;
 $('#chatInput').addEventListener('keydown', e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); sendChat(); } });
+$('#chatInput').addEventListener('input', e=>{ const ta=e.target; ta.style.height='auto'; ta.style.height=Math.min(ta.scrollHeight,170)+'px'; });
 $('#clearChat').onclick=()=>{ if(chatBusy) chatAbort?.abort(); chatHistory=[]; pendingFiles=[]; renderAtts(); renderChat(); };
 
 // ── Картинки ───────────────────────────────────────────────────────────────
