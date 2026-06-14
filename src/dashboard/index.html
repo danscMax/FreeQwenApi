@@ -272,7 +272,7 @@
       <div class="hint" style="margin-bottom:var(--s3)">Зарегистрировать этот сервис как custom-провайдера в шлюзе: открой дашборд FreeLLMAPI → <b>Keys</b> → «Add a custom OpenAI-compatible model» и вставь Base URL и модели.</div>
       <div class="row"><label class="k">Base URL</label><div class="val" id="llmBaseUrl">—</div><button class="sm" data-copy="llmBaseUrl" aria-label="Копировать"><svg class="ic"><use href="#i-copy"/></svg></button></div>
       <div class="row"><label class="k">Модели</label><div class="val" id="llmModels">qwen3.7-max, qwen3-coder-plus</div><button class="sm" id="copyLlmModels" aria-label="Копировать модели"><svg class="ic"><use href="#i-copy"/></svg></button></div>
-      <div class="row"><label class="k">URL шлюза</label><input id="llmGatewayUrl" placeholder="http://localhost:3001" autocomplete="off" spellcheck="false" style="flex:1;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:var(--r);padding:6px 10px;font-family:var(--mono);font-size:var(--fs-xs)"></div>
+      <div class="row"><label class="k">URL шлюза</label><input id="llmGatewayUrl" placeholder="http://localhost:13001" autocomplete="off" spellcheck="false" style="flex:1;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:var(--r);padding:6px 10px;font-family:var(--mono);font-size:var(--fs-xs)"></div>
       <div class="row" style="margin-top:var(--s3)"><button class="primary" id="addToLlm"><svg class="ic"><use href="#i-plug"/></svg>Добавить в FreeLLMAPI</button></div>
     </div>
   </section>
@@ -330,9 +330,9 @@ $('#baseUrlApi').textContent = origin + '/api';
 $('#llmBaseUrl').textContent = apiV1;
 const LLM_MODELS_TEXT = 'qwen3.7-max\nqwen3-coder-plus';
 $('#copyLlmModels').onclick = ()=>copyText(LLM_MODELS_TEXT);
-const llmGw = $('#llmGatewayUrl'); llmGw.value = localStorage.getItem('llmGatewayUrl') || 'http://localhost:3001';
+const llmGw = $('#llmGatewayUrl'); llmGw.value = localStorage.getItem('llmGatewayUrl') || 'http://localhost:13001';
 llmGw.onchange = ()=>localStorage.setItem('llmGatewayUrl', llmGw.value.trim());
-$('#addToLlm').onclick = ()=>{ const gw=(llmGw.value.trim()||'http://localhost:3001').replace(/\/+$/,''); copyText(apiV1); window.open(gw,'_blank','noopener'); toast('Base URL скопирован. Вставь в Keys шлюза; модели — кнопкой «копировать».','ok'); };
+$('#addToLlm').onclick = ()=>{ const gw=(llmGw.value.trim()||'http://localhost:13001').replace(/\/+$/,''); copyText(apiV1); window.open(gw,'_blank','noopener'); toast('Base URL скопирован. Вставь в Keys шлюза; модели — кнопкой «копировать».','ok'); };
 
 // ── Вкладки ──────────────────────────────────────────────────────────────
 const TABS=['chat','images','video','accounts','overview'];
