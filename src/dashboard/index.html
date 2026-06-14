@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FreeQwenApi — Дашборд</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2358a6ff' stroke-width='2' stroke-linejoin='round'%3E%3Cpath d='M12 2 4 6.5v9L12 22l8-6.5v-9L12 2Z'/%3E%3Cpath d='m12 7-4 2.3v4.4L12 16l4-2.3V9.3L12 7Z'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239d7bff' stroke-width='2' stroke-linejoin='round'%3E%3Cpath d='M12 2 4 6.5v9L12 22l8-6.5v-9L12 2Z'/%3E%3Cpath d='m12 7-4 2.3v4.4L12 16l4-2.3V9.3L12 7Z'/%3E%3C/svg%3E">
 <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js" integrity="sha384-/TQbtLCAerC3jgaim+N78RZSDYV7ryeoBCVqTuzRrFec2akfBkHS7ACQ3PQhvMVi" crossorigin="anonymous" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js" integrity="sha384-XQqX/4yiUGu+oyr87jvWzRuqBUK/adrY0DunhL+tID9m/9dwSpV8h9Fk/Sg6ifVQ" crossorigin="anonymous" defer></script>
 <style>
@@ -12,7 +12,7 @@
     --bg:#0d1117; --bg2:#010409; --card:#161b22; --card2:#1c2230; --elev:#21262d;
     --border:#2a2f37; --border2:#3d444d;
     --text:#e6edf3; --muted:#9198a1; --faint:#6e7681;
-    --accent:#58a6ff; --accent-press:#1f6feb; --accent-deep:#1158c7;
+    --accent:#9d7bff; --accent-press:#8158e6; --accent-deep:#6a45c9;
     --ok:#3fb950; --warn:#d29922; --err:#f85149;
     --mono:ui-monospace,SFMono-Regular,Consolas,monospace;
     --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:22px; --s6:30px;
@@ -202,6 +202,7 @@
     <button class="tab" role="tab" aria-selected="true" aria-controls="tab-chat" id="t-chat" data-tab="chat"><svg class="ic"><use href="#i-chat"/></svg>Чат</button>
     <button class="tab" role="tab" aria-selected="false" aria-controls="tab-images" id="t-images" data-tab="images" tabindex="-1"><svg class="ic"><use href="#i-image"/></svg>Картинки</button>
     <button class="tab" role="tab" aria-selected="false" aria-controls="tab-video" id="t-video" data-tab="video" tabindex="-1"><svg class="ic"><use href="#i-video"/></svg>Видео</button>
+    <button class="tab" role="tab" aria-selected="false" aria-controls="tab-accounts" id="t-accounts" data-tab="accounts" tabindex="-1"><svg class="ic"><use href="#i-accounts"/></svg>Аккаунты</button>
     <button class="tab" role="tab" aria-selected="false" aria-controls="tab-overview" id="t-overview" data-tab="overview" tabindex="-1"><svg class="ic"><use href="#i-overview"/></svg>Обзор</button>
   </nav>
 
@@ -253,7 +254,30 @@
     </div>
   </section>
 
-  <!-- ОБЗОР (+ аккаунты) -->
+  <!-- АККАУНТЫ -->
+  <section id="tab-accounts" class="panel" role="tabpanel" aria-labelledby="t-accounts">
+    <div class="card full">
+      <h2><svg class="ic"><use href="#i-accounts"/></svg>Аккаунты Qwen <span class="spacer"></span>
+        <span id="accUpdated" class="hint" style="margin:0 8px 0 0"></span>
+        <button class="sm" id="checkAllBtn"><svg class="ic"><use href="#i-check"/></svg>проверить все</button></h2>
+      <div id="accList"><span class="hint">загрузка…</span></div>
+      <div class="row" style="margin-top:var(--s4)">
+        <input type="text" id="newToken" aria-label="Новый токен Qwen" placeholder="Вставьте токен Qwen (eyJ…) и нажмите «Добавить»" autocomplete="off" spellcheck="false">
+        <button class="primary" id="addBtn">Добавить</button>
+      </div>
+      <div class="hint" id="addHint">Токен: <code>chat.qwen.ai</code> → F12 → Console → <code>copy(localStorage.token)</code> <button class="sm" id="copySnippet" style="margin-left:6px"><svg class="ic"><use href="#i-copy"/></svg>копировать команду</button></div>
+    </div>
+    <div class="card full">
+      <h2><svg class="ic"><use href="#i-plug"/></svg>Добавить в FreeLLMAPI</h2>
+      <div class="hint" style="margin-bottom:var(--s3)">Зарегистрировать этот сервис как custom-провайдера в шлюзе: открой дашборд FreeLLMAPI → <b>Keys</b> → «Add a custom OpenAI-compatible model» и вставь Base URL и модели.</div>
+      <div class="row"><label class="k">Base URL</label><div class="val" id="llmBaseUrl">—</div><button class="sm" data-copy="llmBaseUrl" aria-label="Копировать"><svg class="ic"><use href="#i-copy"/></svg></button></div>
+      <div class="row"><label class="k">Модели</label><div class="val" id="llmModels">qwen3.7-max, qwen3-coder-plus</div><button class="sm" id="copyLlmModels" aria-label="Копировать модели"><svg class="ic"><use href="#i-copy"/></svg></button></div>
+      <div class="row"><label class="k">URL шлюза</label><input id="llmGatewayUrl" placeholder="http://localhost:3001" autocomplete="off" spellcheck="false" style="flex:1;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:var(--r);padding:6px 10px;font-family:var(--mono);font-size:var(--fs-xs)"></div>
+      <div class="row" style="margin-top:var(--s3)"><button class="primary" id="addToLlm"><svg class="ic"><use href="#i-plug"/></svg>Добавить в FreeLLMAPI</button></div>
+    </div>
+  </section>
+
+  <!-- ОБЗОР -->
   <section id="tab-overview" class="panel" role="tabpanel" aria-labelledby="t-overview">
     <div class="kpis">
       <div class="kpi"><div class="num" id="kpiStatus">—</div><div class="lbl"><svg class="ic"><use href="#i-refresh"/></svg>статус</div></div>
@@ -277,17 +301,6 @@
       <div class="card">
         <h2><svg class="ic"><use href="#i-overview"/></svg>Модели (<span id="modelCount">0</span>) <span class="spacer"></span><span class="hint" style="margin:0">клик копирует</span></h2>
         <div class="models" id="modelList"><span class="hint">загрузка…</span></div>
-      </div>
-      <div class="card full">
-        <h2><svg class="ic"><use href="#i-accounts"/></svg>Аккаунты Qwen <span class="spacer"></span>
-          <span id="accUpdated" class="hint" style="margin:0 8px 0 0"></span>
-          <button class="sm" id="checkAllBtn"><svg class="ic"><use href="#i-check"/></svg>проверить все</button></h2>
-        <div id="accList"><span class="hint">загрузка…</span></div>
-        <div class="row" style="margin-top:var(--s4)">
-          <input type="text" id="newToken" aria-label="Новый токен Qwen" placeholder="Вставьте токен Qwen (eyJ…) и нажмите «Добавить»" autocomplete="off" spellcheck="false">
-          <button class="primary" id="addBtn">Добавить</button>
-        </div>
-        <div class="hint" id="addHint">Токен: <code>chat.qwen.ai</code> → F12 → Console → <code>copy(localStorage.token)</code> <button class="sm" id="copySnippet" style="margin-left:6px"><svg class="ic"><use href="#i-copy"/></svg>копировать команду</button></div>
       </div>
     </div>
   </section>
@@ -313,9 +326,16 @@ function mdRender(text){ try{ if(window.marked&&window.DOMPurify){ const html=wi
 const apiV1 = origin+'/api/v1';
 $('#baseUrl').textContent = apiV1;
 $('#baseUrlApi').textContent = origin + '/api';
+// --- Добавить в FreeLLMAPI (handoff без авторизации) ---
+$('#llmBaseUrl').textContent = apiV1;
+const LLM_MODELS_TEXT = 'qwen3.7-max\nqwen3-coder-plus';
+$('#copyLlmModels').onclick = ()=>copyText(LLM_MODELS_TEXT);
+const llmGw = $('#llmGatewayUrl'); llmGw.value = localStorage.getItem('llmGatewayUrl') || 'http://localhost:3001';
+llmGw.onchange = ()=>localStorage.setItem('llmGatewayUrl', llmGw.value.trim());
+$('#addToLlm').onclick = ()=>{ const gw=(llmGw.value.trim()||'http://localhost:3001').replace(/\/+$/,''); copyText(apiV1); window.open(gw,'_blank','noopener'); toast('Base URL скопирован. Вставь в Keys шлюза; модели — кнопкой «копировать».','ok'); };
 
 // ── Вкладки ──────────────────────────────────────────────────────────────
-const TABS=['chat','images','video','overview'];
+const TABS=['chat','images','video','accounts','overview'];
 const inited={};
 function showTab(name){
   if(!TABS.includes(name)) name='chat';
@@ -327,7 +347,8 @@ function showTab(name){
 function lazyInit(name){
   if(name==='chat') loadChatModels();
   else if(name==='images') loadImageModels();
-  else if(name==='overview'){ loadModels(); loadAccounts(); }
+  else if(name==='accounts') loadAccounts();
+  else if(name==='overview') loadModels();
 }
 document.querySelectorAll('.tab').forEach(t=> t.onclick=()=>showTab(t.dataset.tab));
 $('.tabs').addEventListener('keydown', e=>{
@@ -446,7 +467,7 @@ document.addEventListener('click', async e=>{
       if(j.ok){ toast('Ярлык сохранён','ok'); loadAccounts(); } else { toast(j.error||'Ошибка','err'); t.disabled=false; } }
     catch{ toast('Сеть недоступна','err'); t.disabled=false; } return; }
 });
-setInterval(()=>{ if($('#tab-overview').classList.contains('active') && inited.overview) loadAccounts(); }, 20000);
+setInterval(()=>{ if($('#tab-accounts').classList.contains('active') && inited.accounts) loadAccounts(); }, 20000);
 
 // ── Чат (история + файлы + markdown, через /api/chat/completions) ────────────
 let chatHistory=[], chatBusy=false, chatAbort=null, pendingFiles=[];
