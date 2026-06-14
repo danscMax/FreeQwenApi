@@ -1068,6 +1068,10 @@ function localOnly(req, res, next) {
 function sameOriginOnly(req, res, next) {
     const origin = req.get('origin');
     if (origin) {
+        // Browser extensions (the account-import popup) are user-installed and
+        // declare an explicit host permission for this server. A web page cannot
+        // forge a *-extension:// Origin, so these are trusted, not a CSRF vector.
+        if (/^(chrome-extension|moz-extension|safari-web-extension):\/\//i.test(origin)) return next();
         try {
             if (new URL(origin).host !== req.get('host')) {
                 return res.status(403).json({ error: 'Cross-origin запрос запрещён' });
