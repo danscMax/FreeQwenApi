@@ -559,11 +559,20 @@ async function executeApiRequest(page, apiUrl, payload, token, onChunk = null) {
     if (payload?.stream !== false && typeof onChunk === 'function') {
         const streamedResponse = await executeApiRequestWithNodeStreaming(apiUrl, payload, token, onChunk);
 
-        const canReturnDirectly =
+        // Qwen's Aliyun WAF blocks the browserless node-streaming fetch and returns a
+        // non-SSE captcha page (errorBody = WAF html). Do NOT return that — fall through
+        // to the browser (page.evaluate) path, which carries the real session and is not
+        // challenged. Without this, streaming requests surface the captcha as the answer.
+        const wafBlockedNodeStream =
+            streamedResponse.success !== true &&
+            /Unexpected non-SSE 200/i.test(String(streamedResponse.error || ''));
+
+        const canReturnDirectly = !wafBlockedNodeStream && (
             streamedResponse.success ||
             Boolean(streamedResponse.status) ||
             Boolean(streamedResponse.errorBody) ||
-            streamedResponse.hasStreamedChunks === true;
+            streamedResponse.hasStreamedChunks === true
+        );
 
         if (canReturnDirectly) {
             return streamedResponse;
