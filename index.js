@@ -167,7 +167,11 @@ async function startServer() {
         ensureNonInteractiveTokens();
     }
 
-    const browserInitialized = await initBrowser(false);
+    // Qwen blocks headless automation (CDP evaluate hangs). Allow a headed run
+    // via QWEN_VISIBLE=1 so the page renders normally and any one-time
+    // verification can be passed; the session then persists.
+    const visibleMode = ['1', 'true', 'yes', 'on'].includes(String(process.env.QWEN_VISIBLE || '').toLowerCase());
+    const browserInitialized = await initBrowser(visibleMode);
     if (!browserInitialized) {
         logError('Не удалось инициализировать браузер. Завершение работы.');
         process.exit(1);
