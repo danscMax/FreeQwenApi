@@ -23,29 +23,45 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 export async function initBrowser(visibleMode = true, skipManualRestart = false) {
     if (browserInstance) return true;
 
-    logInfo('Инициализация браузера с Puppeteer Stealth...');
+    const cdpUrl = (process.env.QWEN_CDP_URL || '').trim();
+    logInfo(cdpUrl
+        ? `Инициализация браузера: подключение к Chrome по CDP (${cdpUrl})...`
+        : 'Инициализация браузера с Puppeteer Stealth...');
     try {
-        browserInstance = await puppeteer.launch({
-            headless: !visibleMode,
-            slowMo: visibleMode ? 30 : 0,
-            executablePath: process.env.CHROME_PATH || undefined,
-            args: [
-                '--no-sandbox', '--disable-setuid-sandbox',
-                '--disable-blink-features=AutomationControlled',
-                '--disable-dev-shm-usage', '--disable-web-security',
-                '--disable-features=IsolateOrigins,site-per-process',
-                `--window-size=${VIEWPORT_WIDTH},${VIEWPORT_HEIGHT}`,
-                '--start-maximized', '--disable-infobars',
-                '--disable-extensions', '--disable-gpu',
-                '--no-first-run', '--no-default-browser-check',
-                '--ignore-certificate-errors', '--ignore-certificate-errors-spki-list'
-            ],
-            defaultViewport: { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT },
-            ignoreHTTPSErrors: true
-        });
+        if (cdpUrl) {
+            // Attach to YOUR already-running, logged-in Chrome (launch it with
+            // --remote-debugging-port=PORT --user-data-dir=<dir>). Reuses a
+            // human-trusted session, so qwen serves no captcha and the headless
+            // CDP evaluate no longer hangs — no empty-browser login required.
+            browserInstance = await puppeteer.connect({
+                browserURL: cdpUrl,
+                defaultViewport: { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT }
+            });
+        } else {
+            browserInstance = await puppeteer.launch({
+                headless: !visibleMode,
+                slowMo: visibleMode ? 30 : 0,
+                executablePath: process.env.CHROME_PATH || undefined,
+                args: [
+                    '--no-sandbox', '--disable-setuid-sandbox',
+                    '--disable-blink-features=AutomationControlled',
+                    '--disable-dev-shm-usage', '--disable-web-security',
+                    '--disable-features=IsolateOrigins,site-per-process',
+                    `--window-size=${VIEWPORT_WIDTH},${VIEWPORT_HEIGHT}`,
+                    '--start-maximized', '--disable-infobars',
+                    '--disable-extensions', '--disable-gpu',
+                    '--no-first-run', '--no-default-browser-check',
+                    '--ignore-certificate-errors', '--ignore-certificate-errors-spki-list'
+                ],
+                defaultViewport: { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT },
+                ignoreHTTPSErrors: true
+            });
+        }
 
-        const pages = await browserInstance.pages();
-        const page = pages.length > 0 ? pages[0] : await browserInstance.newPage();
+        // In CDP mode open a fresh tab (don't hijack the user's current tab).
+        const page = cdpUrl
+            ? await browserInstance.newPage()
+            : ((await browserInstance.pages())[0] || await browserInstance.newPage());
 
         await page.setUserAgent(USER_AGENT);
         await page.setViewport({ width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT, deviceScaleFactor: 1 });
@@ -101,7 +117,9 @@ export async function initBrowser(visibleMode = true, skipManualRestart = false)
         browserContext = page;
         logInfo('Браузер инициализирован с максимальной защитой от обнаружения');
 
-        if (visibleMode) {
+        // CDP-connected Chrome is already a real, logged-in session — skip the
+        // interactive empty-browser login/captcha flow.
+        if (visibleMode && !cdpUrl) {
             await startManualAuthenticationPuppeteer(page, skipManualRestart);
         }
         // loadSessionPuppeteer removed — was dead code (always returned false)
