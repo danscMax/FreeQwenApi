@@ -421,6 +421,10 @@ async function loadAccounts(){
       <div class="relogin-box" data-box="${esc(a.id)}" style="display:none">
         <input type="text" aria-label="Новый токен для ${esc(a.id)}" placeholder="Новый токен Qwen (eyJ…)" data-newtok="${esc(a.id)}" autocomplete="off" spellcheck="false">
         <button class="primary sm" data-save="${esc(a.id)}">Сохранить</button><button class="sm" data-cancel="${esc(a.id)}">Отмена</button>
+      </div>
+      <div class="relogin-box" data-labelbox="${esc(a.id)}" style="display:none">
+        <input type="text" maxlength="60" aria-label="Ярлык для ${esc(a.id)}" placeholder="Ярлык — для различения аккаунтов" data-newlabel="${esc(a.id)}" value="${esc(a.label||'')}" autocomplete="off">
+        <button class="primary sm" data-savelabel="${esc(a.id)}">Сохранить</button><button class="sm" data-cancellabel="${esc(a.id)}">Отмена</button>
       </div>`;
     }).join('');
     const u=$('#accUpdated'); if(u) u.textContent='обновлено '+fmtTime(new Date().toISOString());
